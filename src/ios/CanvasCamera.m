@@ -896,8 +896,26 @@ static BOOL const LOGGING                    = NO;
     return uiImage;
 }
 
+- (UIInterfaceOrientation) getInterfaceOrientation {
+    if (@available(iOS 13.0, *)) {
+        UIWindow *firstWindow = [[[UIApplication sharedApplication] windows] firstObject];
+        if (firstWindow == nil) { return NO; }
+
+        UIWindowScene *windowScene = firstWindow.windowScene;
+        if (windowScene == nil){ return NO; }
+
+        return windowScene.interfaceOrientation;
+    } else {
+        return UIApplication.sharedApplication.statusBarOrientation;
+    }
+}
+
 - (void) setVideoOrientation:(AVCaptureConnection *)connection {
-    UIDeviceOrientation deviceOrientation = [UIDevice currentDevice].orientation;
+    __block UIInterfaceOrientation deviceOrientation = nil;
+    
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        deviceOrientation = [self getInterfaceOrientation];
+    });
 
     if (connection.supportsVideoOrientation) {
         switch(deviceOrientation) {
@@ -929,7 +947,11 @@ static BOOL const LOGGING                    = NO;
 
 - (NSString *)getCurrentOrientationToString {
 
-    UIDeviceOrientation deviceOrientation = [UIDevice currentDevice].orientation;
+    __block UIInterfaceOrientation deviceOrientation = nil;
+    
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        deviceOrientation = [self getInterfaceOrientation];
+    });
 
     switch(deviceOrientation) {
         case UIInterfaceOrientationPortraitUpsideDown:
