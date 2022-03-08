@@ -1,15 +1,14 @@
-[![NPM Version][npm-image]][npm-url]
-[![NPM Downloads][downloads-image]][downloads-url]
-[![Codacy Badge][codacy-image]][codacy-url]
-
 # Cordova CanvasCamera plugin
+
+## Origin and Adaption
+This plugin is forked from [VirtuoWorks](https://github.com/VirtuoWorks/CanvasCameraPlugin) and adapted to work better with Ionic Capacitor.
 
 ## Plugin's Purpose
 The purpose of the plugin is to capture video to preview camera in a web page's canvas element.
 Allows to select front or back camera and to control the flash.
 
 ## Working Demo
-Having trouble using CanvasCamera Plugin ? [Check our working demo here](https://github.com/VirtuoWorks/CanvasCameraDemo).
+Having trouble using CanvasCamera Plugin ? [Check VirtuoWorks working demo here](https://github.com/VirtuoWorks/CanvasCameraDemo).
 
 ## Supported Platforms
 - iOS
@@ -25,14 +24,14 @@ The plugin can either be installed into the local development environment or clo
 Through the [Command-line Interface][CLI]:
 
 ```bash
-cordova plugin add https://github.com/VirtuoWorks/CanvasCameraPlugin.git && cordova prepare
+cordova plugin add https://github.com/saphir1997/CanvasCameraPlugin.git && cordova prepare
 ```
 
 ### Removing the Plugin from your project
 Through the [Command-line Interface][CLI]:
 
 ```bash
-cordova plugin remove com.virtuoworks.cordova-plugin-canvascamera
+cordova plugin remove com.saphir1997.cordova-plugin-canvascamera
 ```
 
 ## TypeScript/Angular 2 support

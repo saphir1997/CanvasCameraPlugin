@@ -1,18 +1,16 @@
 <?xml version='1.0' encoding='utf-8'?>
 
-<plugin id="com.virtuoworks.cordova-plugin-canvascamera"
+<plugin id="com.saphir1997.cordova-plugin-canvascamera"
         version="1.2.0" xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android">
 
     <name>Canvas Camera</name>
 
     <description>Canvas Camera plug-in for Android and iOS.</description>
-    <repo>https://github.com/VirtuoWorks/CanvasCameraPlugin.git</repo>
+    <repo>https://github.com/saphir1997/CanvasCameraPlugin.git</repo>
     <keywords>camera, canvas, canvas camera, cordova-android, cordova-ios, cordova</keywords>
     <license>MIT</license>
     <author>VirtuoWorks</author>
-
-    <dependency id="cordova-plugin-compat" version="^1.2.0" />
 
     <js-module name="CanvasCamera" src="www/CanvasCamera.js">
         <clobbers target="plugin.CanvasCamera" />
@@ -50,7 +48,7 @@
 
       <config-file parent="/*" target="res/xml/config.xml">
         <feature name="CanvasCamera">
-          <param name="android-package" value="com.virtuoworks.cordova.plugin.canvascamera.CanvasCamera" />
+          <param name="android-package" value="com.saphir1997.cordova.plugin.canvascamera.CanvasCamera" />
           <param name="onload" value="true" />
         </feature>
       </config-file>
@@ -65,14 +63,14 @@
 
       <config-file parent="/manifest/application" target="AndroidManifest.xml">
         <activity
-          android:name="com.virtuoworks.cordova.plugin.canvascamera.CanvasCamera"
+          android:name="com.saphir1997.cordova.plugin.canvascamera.CanvasCamera"
           android:label="@string/app_name"
           android:theme="@android:style/Theme.Black.NoTitleBar">
         </activity>
       </config-file>
 
-      <source-file src="src/android/CanvasCamera.java" target-dir="src/com/virtuoworks/cordova/plugin/canvascamera" />
-      <source-file src="src/android/CanvasCameraInterface.java" target-dir="src/com/virtuoworks/cordova/plugin/canvascamera" />
+      <source-file src="src/android/CanvasCamera.java" target-dir="src/com/saphir1997/cordova/plugin/canvascamera" />
+      <source-file src="src/android/CanvasCameraInterface.java" target-dir="src/com/saphir1997/cordova/plugin/canvascamera" />
 
     </platform>
 
