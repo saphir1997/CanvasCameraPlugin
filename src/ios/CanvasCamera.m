@@ -34,6 +34,9 @@ static BOOL const LOGGING                    = NO;
 @property (readwrite, nonatomic, strong) AVCaptureSession *captureSession;
 @property (readwrite, nonatomic, strong) AVCaptureDeviceInput *captureDeviceInput;
 @property (readwrite, nonatomic, strong) AVCaptureVideoDataOutput *captureVideoDataOutput;
+@property (readwrite, nonatomic, strong) AVAssetWriterInput *assetWriterInput;
+@property (readwrite, nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *pixelBufferAdaptor;
+@property (readwrite, nonatomic, strong) AVAssetWriter *assetWriter;
 
 @property (readwrite, nonatomic, strong) NSString *callbackId;
 
@@ -382,6 +385,7 @@ static BOOL const LOGGING                    = NO;
 
 - (void)initDefaults {
     self.fps = 30;
+    self.firstFrameTime = kCMTimeZero;
     self.width = 352;
     self.height = 288;
     self.canvasWidth = 352;
@@ -716,142 +720,301 @@ static BOOL const LOGGING                    = NO;
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     if (self.isPreviewing && self.callbackId) {
+        NSString *currentOrientation;
 
-        [self setVideoOrientation:connection];
-
-        @autoreleasepool {
-            // Getting image files paths
-            NSMutableDictionary *files = [self getImageFilesPaths];
-            // Get core image from sample buffer
-            CIImage *ciImage = [self CIImageFromSampleBuffer:sampleBuffer];
-            // Get ui image from core image
-            UIImage *uiImage = [self UIImageFromCIImage:ciImage];
-            // Has the image been rotated ?
-            BOOL rotated = (BOOL)[self getDisplayRotation];
-            // Resize the ui image to match target canvas size
-            uiImage = [self resizedUIImage:uiImage toSize:CGSizeMake(self.canvasWidth, self.canvasHeight) rotated:rotated];
-
-            // Convert the ui image to JPEG NSData
-            NSData *fullsizeData = UIImageJPEGRepresentation(uiImage, 1.0);
-
-            // Same operation for the image thumbnail version
-            NSData *thumbnailData = nil;
-            if (self.hasThumbnail) {
-                thumbnailData = UIImageJPEGRepresentation([self resizedUIImage:uiImage ratio:self.thumbnailRatio], 1.0);
-            }
-
-            // Allocating output NSDictionnary
-            NSMutableDictionary *images =  [[NSMutableDictionary alloc] init];
-
-            // Populating images NSDictionnary
-            images[@"fullsize"] = [[NSMutableDictionary alloc] init];
-
-            NSString *fullImagePath = nil;
-            if ([self.use isEqualToString:@"file"]) {
-                // Get a file path to save the JPEG as a file
-                fullImagePath = [files valueForKey:@"fullsize"];
-                if (fullImagePath) {
-                    // Write the data to the file
-                    if ([fullsizeData writeToFile:fullImagePath atomically:YES]) {
-                        if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][captureOutput] Fullsize image file with path [%@] saved.", fullImagePath);
-                        fullImagePath = [self urlTransformer:[NSURL fileURLWithPath:fullImagePath]].absoluteString;
-                        images[@"fullsize"][@"file"] = (fullImagePath) ? fullImagePath : @"";
-                    } else {
-                        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Could not save fullsize image file with path [%@].", fullImagePath);
-                        fullImagePath = nil;
-                    }
-
-                } else {
-                    if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Unable to retrieve path for fullsize image file.");
-                    fullImagePath = nil;
-                }
-            }
-
-            NSString *fullImageDataToB64 = nil;
-            if ([self.use isEqualToString:@"data"]) {
-                fullImageDataToB64 = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", [fullsizeData base64EncodedStringWithOptions:0]];
-                images[@"fullsize"][@"data"] = (fullImageDataToB64) ? fullImageDataToB64 : @"";
-            }
-
-            // release fullsizeData
-            fullsizeData = nil;
-
-            images[@"fullsize"][@"rotation"] = @([self getDisplayRotation]);
-            images[@"fullsize"][@"orientation"] = [self getCurrentOrientationToString];
-            images[@"fullsize"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
-
-            fullImagePath = nil;
-            fullImageDataToB64 = nil;
-
-            images[@"thumbnail"] = [[NSMutableDictionary alloc] init];
-
-            if (thumbnailData) {
-                NSString *thumbImagePath = nil;
-                if ([self.use isEqualToString:@"file"]) {
-                    thumbImagePath = [files valueForKey:@"thumbnail"];
-                    if (thumbImagePath) {
-                        // Write the data to the file
-                        if ([thumbnailData writeToFile:thumbImagePath atomically:YES]) {
-                            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][captureOutput] Thumbnail image file with path [%@] saved.", thumbImagePath);
-                            thumbImagePath = [self urlTransformer:[NSURL fileURLWithPath:thumbImagePath]].absoluteString;
-                            images[@"thumbnail"][@"file"] = (thumbImagePath) ? thumbImagePath : @"";
-                        } else {
-                            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Could not save thumbnail image file with path [%@].", thumbImagePath);
-                            thumbImagePath = nil;
-                        }
-                    } else {
-                        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Unable to retrieve path for thumbnail image file.");
-                        thumbImagePath = nil;
-                    }
-                }
-
-                NSString *thumbImageDataToB64 = nil;
-                if ([self.use isEqualToString:@"data"]) {
-                    thumbImageDataToB64 = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", [thumbnailData base64EncodedStringWithOptions:0]];
-                    images[@"thumbnail"][@"data"] = (thumbImageDataToB64) ? thumbImageDataToB64 : @"";
-                }
-
-                // release thumbnailData
-                thumbnailData = nil;
-
-                images[@"thumbnail"][@"rotation"] = @([self getDisplayRotation]);
-                images[@"thumbnail"][@"orientation"] = [self getCurrentOrientationToString];
-                images[@"thumbnail"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
-
-                thumbImagePath = nil;
-                thumbImageDataToB64 = nil;
-            }
-
-            // Allocating output NSDictionnary
-            NSMutableDictionary *output =  [[NSMutableDictionary alloc] init];
-
-            // Populating output NSDictionnary
-            output[@"images"] = images;
-
-            [self addPluginResultDataOutput:output ciImage:ciImage rotated:rotated];
-
-            // release images output dictionnary
-            images = nil;
-
-            // release ciImage
-            ciImage = nil;
-
-            // release uiImage
-            uiImage = nil;
-
-            if (self.isPreviewing && self.callbackId) {
-                CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[self getPluginResultMessage:@"OK" pluginOutput:output]];
-                [pluginResult setKeepCallbackAsBool:YES];
-                [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
-            }
+        // Only flip video if it is not recording!
+        if (!self.isRecording) {
+            [self setVideoOrientation:connection];
+            // Set orientation of the current device state
+            currentOrientation = [self getCurrentOrientationToString];
+        } else {
+            // Set orientation of the state at the time of recording start
+            currentOrientation = self.recordingOrientation;
         }
+
+        // Recording has highest priority - always run immediately
+
+        // Has the image been rotated ?
+        NSInteger currentRotation = [self getDisplayRotationFromOrientation:currentOrientation];
+        BOOL rotated = (BOOL)currentRotation;
+        // Get image Buffer from sample buffer
+        self.pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+        // Get core image from image buffer
+        __block CIImage *ciImage = [self CIImageFromPixelBuffer:self.pixelBuffer];
+        // Get ui image from core image
+        __block UIImage *uiImage = [self UIImageFromCIImage:ciImage];
+
+        // Get frameTime of the current frame and set it as first if necessary
+        CMTime frameTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+        if (CMTimeCompare(self.firstFrameTime, kCMTimeZero) <= 0) {
+            self.firstFrameTime = frameTime;
+        }
+        // Add frame to recording, if recording is active
+        if(self.isRecording && self.assetWriterInput.readyForMoreMediaData) {
+            [self.pixelBufferAdaptor appendPixelBuffer:self.pixelBuffer
+                            withPresentationTime:CMTimeSubtract(frameTime, self.firstFrameTime)]; // Relative frameTime from the beginning of the recording
+        }
+
+        // Create weak reference to use in background thread
+        __weak CanvasCamera* weakSelf = self;
+        
+        // Update preview only if resources allow it - A frame is only processed and sent to the output, if the previous one has finished
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            // Create a flag that indicates when the thread processing the image for the canvas has finished
+            if (!weakSelf.isProcessingPreview) {
+                weakSelf.isProcessingPreview = YES;
+                
+                @autoreleasepool { //TODO TEST option to disable full size image and just show thumbnail - less demanding on the hardware!
+                    // Getting image files paths
+                    NSMutableDictionary *files = [weakSelf getImageFilesPaths];
+                    
+                    // Resize the ui image to match target canvas size
+                    uiImage = [weakSelf resizedUIImage:uiImage toSize:CGSizeMake(weakSelf.canvasWidth, weakSelf.canvasHeight) rotated:rotated];
+
+                    // Convert the ui image to JPEG NSData
+                    NSData *fullsizeData = UIImageJPEGRepresentation(uiImage, 1.0);
+
+                    // Same operation for the image thumbnail version
+                    NSData *thumbnailData = nil;
+                    if (weakSelf.hasThumbnail) {
+                        thumbnailData = UIImageJPEGRepresentation([weakSelf resizedUIImage:uiImage ratio:weakSelf.thumbnailRatio], 1.0);
+                    }
+
+                    // Allocating output NSDictionnary
+                    NSMutableDictionary *images =  [[NSMutableDictionary alloc] init];
+
+                    // Populating images NSDictionnary
+                    images[@"fullsize"] = [[NSMutableDictionary alloc] init];
+
+                    NSString *fullImagePath = nil;
+                    if ([weakSelf.use isEqualToString:@"file"]) {
+                        // Get a file path to save the JPEG as a file
+                        fullImagePath = [files valueForKey:@"fullsize"];
+                        if (fullImagePath) {
+                            // Write the data to the file
+                            if ([fullsizeData writeToFile:fullImagePath atomically:YES]) {
+                                if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][captureOutput] Fullsize image file with path [%@] saved.", fullImagePath);
+                                fullImagePath = [weakSelf urlTransformer:[NSURL fileURLWithPath:fullImagePath]].absoluteString;
+                                images[@"fullsize"][@"file"] = (fullImagePath) ? fullImagePath : @"";
+                            } else {
+                                if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Could not save fullsize image file with path [%@].", fullImagePath);
+                                fullImagePath = nil;
+                            }
+
+                        } else {
+                            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Unable to retrieve path for fullsize image file.");
+                            fullImagePath = nil;
+                        }
+                    }
+
+                    NSString *fullImageDataToB64 = nil;
+                    if ([weakSelf.use isEqualToString:@"data"]) {
+                        fullImageDataToB64 = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", [fullsizeData base64EncodedStringWithOptions:0]];
+                        images[@"fullsize"][@"data"] = (fullImageDataToB64) ? fullImageDataToB64 : @"";
+                    }
+
+                    // release fullsizeData
+                    fullsizeData = nil;
+
+                    images[@"fullsize"][@"rotation"] = @(currentRotation);
+                    images[@"fullsize"][@"orientation"] = currentOrientation;
+                    images[@"fullsize"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
+
+                    fullImagePath = nil;
+                    fullImageDataToB64 = nil;
+
+                    images[@"thumbnail"] = [[NSMutableDictionary alloc] init];
+
+                    if (thumbnailData) {
+                        NSString *thumbImagePath = nil;
+                        if ([weakSelf.use isEqualToString:@"file"]) {
+                            thumbImagePath = [files valueForKey:@"thumbnail"];
+                            if (thumbImagePath) {
+                                // Write the data to the file
+                                if ([thumbnailData writeToFile:thumbImagePath atomically:YES]) {
+                                    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][captureOutput] Thumbnail image file with path [%@] saved.", thumbImagePath);
+                                    thumbImagePath = [weakSelf urlTransformer:[NSURL fileURLWithPath:thumbImagePath]].absoluteString;
+                                    images[@"thumbnail"][@"file"] = (thumbImagePath) ? thumbImagePath : @"";
+                                } else {
+                                    if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Could not save thumbnail image file with path [%@].", thumbImagePath);
+                                    thumbImagePath = nil;
+                                }
+                            } else {
+                                if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Unable to retrieve path for thumbnail image file.");
+                                thumbImagePath = nil;
+                            }
+                        }
+
+                        NSString *thumbImageDataToB64 = nil;
+                        if ([weakSelf.use isEqualToString:@"data"]) {
+                            thumbImageDataToB64 = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", [thumbnailData base64EncodedStringWithOptions:0]];
+                            images[@"thumbnail"][@"data"] = (thumbImageDataToB64) ? thumbImageDataToB64 : @"";
+                        }
+
+                        // release thumbnailData
+                        thumbnailData = nil;
+
+                        images[@"thumbnail"][@"rotation"] = @(currentRotation);
+                        images[@"thumbnail"][@"orientation"] = currentOrientation;
+                        images[@"thumbnail"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
+
+                        thumbImagePath = nil;
+                        thumbImageDataToB64 = nil;
+                    }
+
+                    // Allocating output NSDictionnary
+                    NSMutableDictionary *output =  [[NSMutableDictionary alloc] init];
+
+                    // Populating output NSDictionnary
+                    output[@"images"] = images;
+
+                    [weakSelf addPluginResultDataOutput:output ciImage:ciImage rotated:rotated];
+
+                    // release images output dictionnary
+                    images = nil;
+
+                    if (weakSelf.isPreviewing && weakSelf.callbackId) {
+                        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK" pluginOutput:output]];
+                        [pluginResult setKeepCallbackAsBool:YES];
+                        [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:weakSelf.callbackId];
+                    }
+                    weakSelf.isProcessingPreview = NO;
+                }
+                // release ciImage
+                ciImage = nil;
+
+                // release uiImage
+                uiImage = nil;
+            }
+        });
     }
 }
 
-- (CIImage *)CIImageFromSampleBuffer:(CMSampleBufferRef)sampleBuffer {
+- (void)startVideoRecording:(CDVInvokedUrlCommand *)command {
+    NSString *outputPath = [[NSString alloc] initWithFormat:@"%@%@", NSTemporaryDirectory(), @"output.mp4"];
+    NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:outputPath];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if ([fileManager fileExistsAtPath:outputPath])
+    {
+        NSError *error;
+        if ([fileManager removeItemAtPath:outputPath error:&error] == NO)
+        {
+            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][startVideoRecording] Could not delete previous file : %@.", error.localizedDescription);
+        } else {
+            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][startVideoRecording] Deleted previous file : %@.", outputPath);
+        }
+    }
+    
+    //Release outputPath
+    outputPath = nil;
 
-    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][startVideoRecording] Starting video recording to: %@.", outputURL);
 
+    //Start recording
+    self.firstFrameTime = kCMTimeZero;
+
+    self.recordingOrientation = [self orientationToString:[self getInterfaceOrientation]];
+    BOOL rotatedRecording = (BOOL)[self getDisplayRotationFromOrientation:self.recordingOrientation];
+    
+    /* Create asset writer with specified output resolution and H264 - Rotate output if necessary*/
+    NSDictionary *outputSettings = [NSDictionary dictionaryWithObjectsAndKeys:
+        [NSNumber numberWithInt:((rotatedRecording) ? self.captureHeight : self.captureWidth)], AVVideoWidthKey,
+        [NSNumber numberWithInt:((rotatedRecording) ? self.captureWidth : self.captureHeight)], AVVideoHeightKey,
+        AVVideoCodecH264, AVVideoCodecKey,
+        nil
+    ];
+
+    self.assetWriterInput = [AVAssetWriterInput 
+                            assetWriterInputWithMediaType:AVMediaTypeVideo
+                            outputSettings:outputSettings];
+
+    /* Expect real time data to always be ready */
+    self.assetWriterInput.expectsMediaDataInRealTime = YES;
+
+    /* AVAssetWriterPixelBufferAdaptor that expects the same 32BGRA input as AVCaptureVideDataOutput supplies */
+    self.pixelBufferAdaptor =
+            [[AVAssetWriterInputPixelBufferAdaptor alloc] 
+                    initWithAssetWriterInput:self.assetWriterInput 
+                    sourcePixelBufferAttributes:
+                        [NSDictionary dictionaryWithObjectsAndKeys:
+                            [NSNumber numberWithInt:kCVPixelFormatType_32BGRA], 
+                            kCVPixelBufferPixelFormatTypeKey,
+                        nil]];
+
+    NSError *error = nil;
+    /*  H.264 in MPEG4 container */
+    self.assetWriter = [[AVAssetWriter alloc]
+                                    initWithURL:outputURL
+                                    fileType:AVFileTypeMPEG4
+                                    error:&error];
+    [self.assetWriter addInput:self.assetWriterInput];
+
+    [self.assetWriter startWriting];
+    [self.assetWriter startSessionAtSourceTime:kCMTimeZero];
+    
+    // Allocating output NSDictionnary
+    NSMutableDictionary *output =  [[NSMutableDictionary alloc] init];
+
+    // Populating output NSDictionnary
+    output[@"video"] = outputURL.absoluteString;
+
+    //Release outputURL
+    outputURL = nil;
+
+    if (!error) {
+        self.isRecording = YES;
+    } else {
+        self.isRecording = NO;
+    }
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        if (error) {
+            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][startVideoRecording] Unable to start video recording", error.localizedDescription);
+            CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:[weakSelf getPluginResultMessage:[NSString stringWithFormat:@"Unable to start video recording: %@", error.localizedDescription]]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:weakSelf.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        } else {
+            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][startVideoRecording] Started video recording.");
+            CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK" pluginOutput:output]];
+            [pluginResult setKeepCallbackAsBool:YES];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        }
+
+        
+    }];
+}
+
+- (void)stopVideoRecording:(CDVInvokedUrlCommand *)command {
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopVideoRecording] Starting async stopVideoRecording thread...");
+
+    self.isRecording = NO;
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        CDVPluginResult *pluginResult = nil;
+        @try {
+            [self.assetWriter finishWriting];
+            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopVideoRecording] Video recording stopped.");
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"Video recording stopped."]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        } @catch (NSException *exception) {
+            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][stopVideoRecording] Could not stop video recording : %@", exception.reason);
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:[weakSelf getPluginResultMessage:exception.reason]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        }
+        weakSelf.firstFrameTime = kCMTimeZero;
+    }];
+}
+
+- (CIImage *)CIImageFromPixelBuffer:(CVPixelBufferRef)pixelBuffer {
     // CFDictionaryRef attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate);
     // CIImage *ciImage = [[CIImage alloc] initWithCVPixelBuffer:pixelBuffer options:(__bridge NSDictionary *)attachments];
 
@@ -937,22 +1100,15 @@ static BOOL const LOGGING                    = NO;
     }
 }
 
-- (NSInteger)getDisplayRotation {
-    if([[self getCurrentOrientationToString] isEqualToString:@"portrait"]) {
+- (NSInteger)getDisplayRotationFromOrientation:(NSString *)orientationString {
+    if([orientationString isEqualToString:@"portrait"]) {
         return 90;
     } else {
         return 0;
     }
 }
 
-- (NSString *)getCurrentOrientationToString {
-
-    __block UIInterfaceOrientation deviceOrientation = nil;
-    
-    dispatch_sync(dispatch_get_main_queue(), ^{
-        deviceOrientation = [self getInterfaceOrientation];
-    });
-
+- (NSString *)orientationToString:(UIInterfaceOrientation)deviceOrientation {
     switch(deviceOrientation) {
         case UIInterfaceOrientationPortraitUpsideDown:
             return @"portrait";
@@ -970,6 +1126,17 @@ static BOOL const LOGGING                    = NO;
             return @"landscape";
             break;
     }
+}
+
+- (NSString *)getCurrentOrientationToString {
+
+    __block UIInterfaceOrientation deviceOrientation = nil;
+    
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        deviceOrientation = [self getInterfaceOrientation];
+    });
+
+    return [self orientationToString:deviceOrientation];
 }
 
 - (NSMutableDictionary *)getImageFilesPaths {

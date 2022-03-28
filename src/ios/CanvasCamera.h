@@ -36,6 +36,7 @@ static NSString *const CCLensOrientationKey  = @"cameraFacing";
 // Public Access
 @property (readwrite, strong) NSString *use;
 @property (readwrite, assign) NSInteger fps;
+@property (readwrite, assign) CMTime firstFrameTime;
 @property (readwrite, assign) NSInteger width;
 @property (readwrite, assign) NSInteger height;
 @property (readwrite, assign) NSInteger canvasHeight;
@@ -49,9 +50,16 @@ static NSString *const CCLensOrientationKey  = @"cameraFacing";
 @property (readwrite, assign) AVCaptureDevicePosition devicePosition;
 
 @property (readwrite, assign) BOOL isPreviewing;
+@property (readwrite, assign) BOOL isProcessingPreview;
+@property (readwrite, assign) BOOL isRecording;
+
+@property (readwrite, assign) NSString *recordingOrientation;
+@property (readwrite, assign) CVPixelBufferRef pixelBuffer;
 
 - (void)startCapture:(CDVInvokedUrlCommand *)command;
 - (void)stopCapture:(CDVInvokedUrlCommand *)command;
+- (void)startVideoRecording:(CDVInvokedUrlCommand *)command;
+- (void)stopVideoRecording;
 - (void)flashMode:(CDVInvokedUrlCommand *)command;
 - (void)cameraPosition:(CDVInvokedUrlCommand *)command;
 

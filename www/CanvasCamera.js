@@ -493,6 +493,44 @@ CanvasCamera.prototype.stop = function(onError, onSuccess) {
   }, this.nativeClass, 'stopCapture', []);
 };
 
+CanvasCamera.prototype.startVideoRecording = function(onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      let videoURL;
+      //Set the URL in the correct format, if we are in ionic
+      if (data != null && data.output != null && data.output.video != null) {
+        videoURL = data.output.video;
+        // If we are using cordova-plugin-ionic-webview plugin which
+        // replaces the default UIWebView with WKWebView.
+        if (window.Ionic &&
+          window.Ionic.WebView &&
+          window.Ionic.WebView.convertFileSrc) {
+            videoURL = window.Ionic.WebView.convertFileSrc(videoURL);
+        }
+        // add a random seed to prevent browser caching.
+        videoURL = videoURL + '?seed=' + Math.round((new Date()).getTime() * Math.random() * 1000);
+      }
+      onSuccess({...data, videoURL});
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'startVideoRecording', []);
+};
+
+CanvasCamera.prototype.stopVideoRecording = function(onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'stopVideoRecording', []);
+};
+
 CanvasCamera.prototype.flashMode = function(flashMode, onError, onSuccess) {
   exec(function(data) {
     if (onSuccess && typeof onSuccess === 'function') {
