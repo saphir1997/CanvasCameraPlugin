@@ -891,19 +891,9 @@ static BOOL const LOGGING                    = NO;
 }
 
 - (void)startVideoRecording:(CDVInvokedUrlCommand *)command {
-    NSString *outputPath = [[NSString alloc] initWithFormat:@"%@%@", NSTemporaryDirectory(), @"output.mp4"];
+    // Use a temporary directory that gets cleared regularly by the system anyway, so we can hold on to multiple files for longer
+    NSString *outputPath = [[NSString alloc] initWithFormat:@"%@%.f%@", NSTemporaryDirectory(), ([NSDate date].timeIntervalSince1970 * 1000), @".mp4"]; // Give unique name by timestamp
     NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:outputPath];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if ([fileManager fileExistsAtPath:outputPath])
-    {
-        NSError *error;
-        if ([fileManager removeItemAtPath:outputPath error:&error] == NO)
-        {
-            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][startVideoRecording] Could not delete previous file : %@.", error.localizedDescription);
-        } else {
-            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][startVideoRecording] Deleted previous file : %@.", outputPath);
-        }
-    }
     
     //Release outputPath
     outputPath = nil;
