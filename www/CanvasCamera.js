@@ -473,16 +473,14 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
 CanvasCamera.prototype.initialize = function(fcanvas, tcanvas) {
   if (fcanvas && fcanvas.getContext) {
     this.canvas.fullsize = this.createRenderer(fcanvas, this);
-    if (tcanvas && tcanvas.getContext) {
-      this.canvas.thumbnail = this.createRenderer(tcanvas, this);
-    }
-  } else {
-    if (fcanvas.fullsize && fcanvas.fullsize.getContext) {
-      this.canvas.fullsize = this.createRenderer(fcanvas.fullsize, this);
-      if (fcanvas.thumbnail && fcanvas.thumbnail.getContext) {
-        this.canvas.thumbnail = this.createRenderer(fcanvas.thumbnail, this);
-      }
-    }
+  } else if (fcanvas && fcanvas.fullsize && fcanvas.fullsize.getContext) {
+    this.canvas.fullsize = this.createRenderer(fcanvas.fullsize, this);
+  }
+
+  if (tcanvas && tcanvas.getContext) {
+    this.canvas.thumbnail = this.createRenderer(tcanvas, this);
+  } else if (fcanvas && fcanvas.thumbnail && fcanvas.thumbnail.getContext) {
+    this.canvas.thumbnail = this.createRenderer(fcanvas.thumbnail, this);
   }
 };
 
@@ -591,11 +589,11 @@ CanvasCamera.prototype.capture = function(data) {
       if (this.canvas.fullsize) {
         this.canvas.fullsize.bufferize(data.output.images.fullsize);
       }
-      if (data.output.images.thumbnail &&
-        data.output.images.thumbnail[this.options.use]) {
-        if (this.canvas.thumbnail) {
-          this.canvas.thumbnail.bufferize(data.output.images.thumbnail);
-        }
+    }
+    if (data.output.images.thumbnail &&
+      data.output.images.thumbnail[this.options.use]) {
+      if (this.canvas.thumbnail) {
+        this.canvas.thumbnail.bufferize(data.output.images.thumbnail);
       }
     }
   }
@@ -644,6 +642,8 @@ CanvasCamera.prototype.setRenderingPresets = function() {
     typeof this.options.onBeforeDraw === 'function') {
     if (this.canvas.fullsize) {
       this.canvas.fullsize.setOnBeforeDraw(this.options.onBeforeDraw);
+    } else if (this.canvas.thumbnail) {
+      this.canvas.thumbnail.setOnBeforeDraw(this.options.onBeforeDraw);
     }
   }
 
@@ -651,6 +651,8 @@ CanvasCamera.prototype.setRenderingPresets = function() {
     typeof this.options.onAfterDraw === 'function') {
     if (this.canvas.fullsize) {
       this.canvas.fullsize.setOnAfterDraw(this.options.onAfterDraw);
+    } else if (this.canvas.thumbnail) {
+      this.canvas.thumbnail.setOnAfterDraw(this.options.onAfterDraw);
     }
   }
 
@@ -729,14 +731,19 @@ CanvasCamera.prototype.getRotationDifference = function(rotation) {
 
 CanvasCamera.prototype.setRenderersSize = function(size) {
   if (size.width && size.height) {
-    if (this.canvas.fullsize) {
+    if (this.canvas.fullsize || this.canvas.thumbnail) {
       var canvasWidth = parseFloat(size.width);
       var canvasHeight = parseFloat(size.height);
       if (!isNaN(canvasWidth) && !isNaN(canvasHeight)) {
-        this.canvas.fullsize.setSize({
-          width: canvasWidth,
-          height: canvasHeight,
-        }, size.auto);
+        if (this.canvas.fullsize) {
+          this.options.disableFullsize = false;
+          this.canvas.fullsize.setSize({
+            width: canvasWidth,
+            height: canvasHeight,
+          }, size.auto);
+        } else {
+          this.options.disableFullsize = true;
+        }
         if (this.canvas.thumbnail) {
           var thumbnailRatio;
           if (this.options.thumbnailRatio) {

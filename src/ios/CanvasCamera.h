@@ -26,6 +26,7 @@ static NSString *const CCCanvasKey           = @"canvas";
 static NSString *const CCCaptureKey          = @"capture";
 static NSString *const CCFlashModeKey        = @"flashMode";
 static NSString *const CCHasThumbnailKey     = @"hasThumbnail";
+static NSString *const CCDisableFullsizeKey  = @"disableFullsize";
 static NSString *const CCThumbnailRatioKey   = @"thumbnailRatio";
 static NSString *const CCLensOrientationKey  = @"cameraFacing";
 
@@ -45,6 +46,7 @@ static NSString *const CCLensOrientationKey  = @"cameraFacing";
 @property (readwrite, assign) NSInteger captureWidth;
 
 @property (readwrite, assign) BOOL hasThumbnail;
+@property (readwrite, assign) BOOL disableFullsize;
 @property (readwrite, assign) CGFloat thumbnailRatio;
 
 @property (readwrite, assign) AVCaptureDevicePosition devicePosition;

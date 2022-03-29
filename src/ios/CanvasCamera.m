@@ -393,6 +393,7 @@ static BOOL const LOGGING                    = NO;
     self.captureWidth = 352;
     self.captureHeight = 288;
     self.hasThumbnail = false;
+    self.disableFullsize = false;
     self.thumbnailRatio = 1 / 6;
     self.flashMode = AVCaptureFlashModeOff;
     self.devicePosition = AVCaptureDevicePositionBack;
@@ -556,6 +557,7 @@ static BOOL const LOGGING                    = NO;
                               @"flashMode" : @([self AVCaptureFlashModeAsBoolean:self.flashMode]),
                               @"cameraFacing" : [self devicePositionToString:self.devicePosition],
                               @"hasThumbnail" : @(self.hasThumbnail),
+                              @"disableFullsize" : @(self.disableFullsize),
                               @"thumbnailRatio" : @(self.thumbnailRatio),
                               @"canvas" : canvas,
                               @"capture" : capture
@@ -632,8 +634,15 @@ static BOOL const LOGGING                    = NO;
     valueAsString = options[CCHasThumbnailKey];
     if (valueAsString) {
         self.hasThumbnail = valueAsString.boolValue;
-        if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][parseOptions] Thumbnail ratio : %@", self.hasThumbnail ? @"true" : @"false");
+        if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][parseOptions] Has Thumbnail : %@", self.hasThumbnail ? @"true" : @"false");
     }
+
+    // disableFullsize
+    valueAsString = options[CCDisableFullsizeKey];
+    if (valueAsString) {
+        self.disableFullsize = valueAsString.boolValue;
+        if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][parseOptions] Disable Fullsize : %@", self.disableFullsize ? @"true" : @"false");
+    }    
 
     // thumbnailRatio
     valueAsString = options[CCThumbnailRatioKey];
@@ -769,10 +778,15 @@ static BOOL const LOGGING                    = NO;
                     NSMutableDictionary *files = [weakSelf getImageFilesPaths];
                     
                     // Resize the ui image to match target canvas size
-                    uiImage = [weakSelf resizedUIImage:uiImage toSize:CGSizeMake(weakSelf.canvasWidth, weakSelf.canvasHeight) rotated:rotated];
+                    if (!weakSelf.disableFullsize || weakSelf.hasThumbnail) {
+                        uiImage = [weakSelf resizedUIImage:uiImage toSize:CGSizeMake(weakSelf.canvasWidth, weakSelf.canvasHeight) rotated:rotated];
+                    }
 
                     // Convert the ui image to JPEG NSData
-                    NSData *fullsizeData = UIImageJPEGRepresentation(uiImage, 1.0);
+                    NSData *fullsizeData = nil;
+                    if (!weakSelf.disableFullsize) {
+                        fullsizeData = UIImageJPEGRepresentation(uiImage, 1.0);
+                    }
 
                     // Same operation for the image thumbnail version
                     NSData *thumbnailData = nil;
@@ -786,42 +800,44 @@ static BOOL const LOGGING                    = NO;
                     // Populating images NSDictionnary
                     images[@"fullsize"] = [[NSMutableDictionary alloc] init];
 
-                    NSString *fullImagePath = nil;
-                    if ([weakSelf.use isEqualToString:@"file"]) {
-                        // Get a file path to save the JPEG as a file
-                        fullImagePath = [files valueForKey:@"fullsize"];
-                        if (fullImagePath) {
-                            // Write the data to the file
-                            if ([fullsizeData writeToFile:fullImagePath atomically:YES]) {
-                                if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][captureOutput] Fullsize image file with path [%@] saved.", fullImagePath);
-                                fullImagePath = [weakSelf urlTransformer:[NSURL fileURLWithPath:fullImagePath]].absoluteString;
-                                images[@"fullsize"][@"file"] = (fullImagePath) ? fullImagePath : @"";
+                    if (fullsizeData) {
+                        NSString *fullImagePath = nil;
+                        if ([weakSelf.use isEqualToString:@"file"]) {
+                            // Get a file path to save the JPEG as a file
+                            fullImagePath = [files valueForKey:@"fullsize"];
+                            if (fullImagePath) {
+                                // Write the data to the file
+                                if ([fullsizeData writeToFile:fullImagePath atomically:YES]) {
+                                    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][captureOutput] Fullsize image file with path [%@] saved.", fullImagePath);
+                                    fullImagePath = [weakSelf urlTransformer:[NSURL fileURLWithPath:fullImagePath]].absoluteString;
+                                    images[@"fullsize"][@"file"] = (fullImagePath) ? fullImagePath : @"";
+                                } else {
+                                    if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Could not save fullsize image file with path [%@].", fullImagePath);
+                                    fullImagePath = nil;
+                                }
+
                             } else {
-                                if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Could not save fullsize image file with path [%@].", fullImagePath);
+                                if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Unable to retrieve path for fullsize image file.");
                                 fullImagePath = nil;
                             }
-
-                        } else {
-                            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][captureOutput] Unable to retrieve path for fullsize image file.");
-                            fullImagePath = nil;
                         }
+
+                        NSString *fullImageDataToB64 = nil;
+                        if ([weakSelf.use isEqualToString:@"data"]) {
+                            fullImageDataToB64 = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", [fullsizeData base64EncodedStringWithOptions:0]];
+                            images[@"fullsize"][@"data"] = (fullImageDataToB64) ? fullImageDataToB64 : @"";
+                        }
+
+                        // release fullsizeData
+                        fullsizeData = nil;
+
+                        images[@"fullsize"][@"rotation"] = [NSString stringWithFormat:@"%d", currentRotation];
+                        images[@"fullsize"][@"orientation"] = [self orientationToString:currentOrientation];
+                        images[@"fullsize"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
+
+                        fullImagePath = nil;
+                        fullImageDataToB64 = nil;
                     }
-
-                    NSString *fullImageDataToB64 = nil;
-                    if ([weakSelf.use isEqualToString:@"data"]) {
-                        fullImageDataToB64 = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", [fullsizeData base64EncodedStringWithOptions:0]];
-                        images[@"fullsize"][@"data"] = (fullImageDataToB64) ? fullImageDataToB64 : @"";
-                    }
-
-                    // release fullsizeData
-                    fullsizeData = nil;
-
-                    images[@"fullsize"][@"rotation"] = [NSString stringWithFormat:@"%d", currentRotation];
-                    images[@"fullsize"][@"orientation"] = [self orientationToString:currentOrientation];
-                    images[@"fullsize"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
-
-                    fullImagePath = nil;
-                    fullImageDataToB64 = nil;
 
                     images[@"thumbnail"] = [[NSMutableDictionary alloc] init];
 
