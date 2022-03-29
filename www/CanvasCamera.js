@@ -95,6 +95,10 @@ CanvasCamera.prototype.createFrame = (function(image, element, renderer) {
   CanvasCamera.Frame.prototype.initialize = function() {
     if (this.image && this.element) {
       this.renderer.canvasCamera.dispatch('beforeframeinitialization', this);
+
+      let difference = this.renderer.canvasCamera.getRotationDifference(this.renderer.rotation);
+      let isOrthogonal = (!(difference % 180 === 0)); // If orthogonal to the window orientation
+
       // The X coordinate of the top left corner of the sub-rectangle of the
       // source image to draw into the destination context.
       this.sx = 0;
@@ -118,11 +122,11 @@ CanvasCamera.prototype.createFrame = (function(image, element, renderer) {
       // The width to draw the image in the destination canvas. This allows
       // scaling of the drawn image. If not specified, the image is not scaled
       // in width when drawn.
-      this.dWidth = parseFloat(this.element.width);
+      this.dWidth = parseFloat((isOrthogonal) ? this.element.height : this.element.width); // Swap when orthogonal
       // The height to draw the image in the destination canvas. This allows
       // scaling of the drawn image. If not specified, the image is not scaled
       // in height when drawn.
-      this.dHeight = parseFloat(this.element.height);
+      this.dHeight = parseFloat((isOrthogonal) ? this.element.width : this.element.height); // Swap when orthogonal
 
       var hRatio = this.dWidth / this.sWidth;
       var vRatio = this.dHeight / this.sHeight;
@@ -164,6 +168,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
     this.image = null;
     this.context = null;
     this.orientation = null;
+    this.rotation = null;
 
     this.buffer = [];
 
@@ -184,7 +189,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
       this.image = new Image();
       this.image.crossOrigin = 'Anonymous';
 
-      this.image.addEventListener('load', function(event) {
+      const drawFunction = function(event) {
         var frame = this.canvasCamera.createFrame(
             this.image,
             this.element,
@@ -204,7 +209,8 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
         frame = null;
 
         this.enable();
-      }.bind(this));
+      }.bind(this);
+      this.image.addEventListener('load', drawFunction);
 
       this.image.addEventListener('error', function(event) {
         this.clear().enable();
@@ -212,6 +218,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
 
       window.addEventListener('orientationchange', function(event) {
         this.onOrientationChange();
+        drawFunction();
       }.bind(this));
     }
     return this;
@@ -234,6 +241,19 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
     this.canvasCamera.dispatch('beforeframerendering', this, frame);
 
     if (frame) {
+      let degrees = this.canvasCamera.getRotationDifference(this.rotation);
+      if (degrees != 0) { // Needs to be rotated
+        let angle = degrees * (Math.PI / 180.0);
+        this.context.setTransform(1, 0, 0, 1, this.element.width/2, this.element.height/2);
+        this.context.rotate(angle);
+
+        // Move center to the middle of the destination
+        frame.dx -= (frame.dWidth / 2);
+        frame.dy -= (frame.dHeight / 2);
+      } else {
+        this.context.setTransform(1, 0, 0, 1, 0, 0); // Reset the whole transformation matrix
+      }
+
       this.context.drawImage(
           frame.image,
           frame.sx,
@@ -283,6 +303,9 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
           this.data = data;
           if (data.hasOwnProperty('orientation') && data.orientation) {
             this.orientation = data.orientation;
+          }
+          if (data.hasOwnProperty('rotation') && data.rotation) {
+            this.rotation = data.rotation;
           }
 
           if (this.image) {
@@ -684,6 +707,22 @@ CanvasCamera.prototype.getUIOrientation = function() {
       return 'portrait';
     } else {
       return 'landscape';
+    }
+  }
+};
+
+CanvasCamera.prototype.getRotationDifference = function(rotation) {
+  if (isNaN(window.orientation)) {
+    return 0;
+  } else {
+    let difference = (rotation - window.orientation) % 360;
+    // Treat angles above 180 as negative angles in the opposite direction
+    if (difference > 180) {
+      return (-360 + difference);
+    } else if (difference < -180) {
+      return (360 + difference);
+    } else {
+      return difference;
     }
   }
 };

@@ -53,7 +53,7 @@ static NSString *const CCLensOrientationKey  = @"cameraFacing";
 @property (readwrite, assign) BOOL isProcessingPreview;
 @property (readwrite, assign) BOOL isRecording;
 
-@property (readwrite, assign) NSString *recordingOrientation;
+@property (readwrite, assign) UIInterfaceOrientation recordingOrientation;
 @property (readwrite, assign) CVPixelBufferRef pixelBuffer;
 
 - (void)startCapture:(CDVInvokedUrlCommand *)command;

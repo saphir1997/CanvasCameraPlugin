@@ -720,13 +720,13 @@ static BOOL const LOGGING                    = NO;
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     if (self.isPreviewing && self.callbackId) {
-        NSString *currentOrientation;
+        UIInterfaceOrientation currentOrientation;
 
         // Only flip video if it is not recording!
         if (!self.isRecording) {
             [self setVideoOrientation:connection];
             // Set orientation of the current device state
-            currentOrientation = [self getCurrentOrientationToString];
+            currentOrientation = [self getCurrentOrientation];
         } else {
             // Set orientation of the state at the time of recording start
             currentOrientation = self.recordingOrientation;
@@ -736,7 +736,7 @@ static BOOL const LOGGING                    = NO;
 
         // Has the image been rotated ?
         NSInteger currentRotation = [self getDisplayRotationFromOrientation:currentOrientation];
-        BOOL rotated = (BOOL)currentRotation;
+        BOOL rotated = (currentRotation == 90 || currentRotation == -90);
         // Get image Buffer from sample buffer
         self.pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
         // Get core image from image buffer
@@ -816,8 +816,8 @@ static BOOL const LOGGING                    = NO;
                     // release fullsizeData
                     fullsizeData = nil;
 
-                    images[@"fullsize"][@"rotation"] = @(currentRotation);
-                    images[@"fullsize"][@"orientation"] = currentOrientation;
+                    images[@"fullsize"][@"rotation"] = [NSString stringWithFormat:@"%d", currentRotation];
+                    images[@"fullsize"][@"orientation"] = [self orientationToString:currentOrientation];
                     images[@"fullsize"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
 
                     fullImagePath = nil;
@@ -854,8 +854,8 @@ static BOOL const LOGGING                    = NO;
                         // release thumbnailData
                         thumbnailData = nil;
 
-                        images[@"thumbnail"][@"rotation"] = @(currentRotation);
-                        images[@"thumbnail"][@"orientation"] = currentOrientation;
+                        images[@"thumbnail"][@"rotation"] = [NSString stringWithFormat:@"%d", currentRotation];
+                        images[@"thumbnail"][@"orientation"] = [self orientationToString:currentOrientation];
                         images[@"thumbnail"][@"timestamp"] = @([NSDate date].timeIntervalSince1970 * 1000);
 
                         thumbImagePath = nil;
@@ -903,13 +903,14 @@ static BOOL const LOGGING                    = NO;
     //Start recording
     self.firstFrameTime = kCMTimeZero;
 
-    self.recordingOrientation = [self orientationToString:[self getInterfaceOrientation]];
-    BOOL rotatedRecording = (BOOL)[self getDisplayRotationFromOrientation:self.recordingOrientation];
+    self.recordingOrientation = [self getInterfaceOrientation];
+    NSInteger rotation = [self getDisplayRotationFromOrientation:self.recordingOrientation];
+    BOOL rotatedRecording = (rotation == 90 || rotation == -90);
     
     /* Create asset writer with specified output resolution and H264 - Rotate output if necessary*/
     NSDictionary *outputSettings = [NSDictionary dictionaryWithObjectsAndKeys:
-        [NSNumber numberWithInt:((rotatedRecording) ? self.captureHeight : self.captureWidth)], AVVideoWidthKey,
-        [NSNumber numberWithInt:((rotatedRecording) ? self.captureWidth : self.captureHeight)], AVVideoHeightKey,
+        [NSNumber numberWithInt:((!rotatedRecording) ? self.captureHeight : self.captureWidth)], AVVideoWidthKey,
+        [NSNumber numberWithInt:((!rotatedRecording) ? self.captureWidth : self.captureHeight)], AVVideoHeightKey,
         AVVideoCodecH264, AVVideoCodecKey,
         nil
     ];
@@ -1090,11 +1091,23 @@ static BOOL const LOGGING                    = NO;
     }
 }
 
-- (NSInteger)getDisplayRotationFromOrientation:(NSString *)orientationString {
-    if([orientationString isEqualToString:@"portrait"]) {
-        return 90;
-    } else {
-        return 0;
+- (NSInteger)getDisplayRotationFromOrientation:(UIInterfaceOrientation)orientation {
+    switch(orientation) {
+        case UIInterfaceOrientationPortraitUpsideDown:
+            return 180;
+            break;
+        case UIInterfaceOrientationPortrait:
+            return 0;
+            break;
+        case UIInterfaceOrientationLandscapeLeft:
+            return -90;
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            return 90;
+            break;
+        default:
+            return 0;
+            break;
     }
 }
 
@@ -1113,18 +1126,23 @@ static BOOL const LOGGING                    = NO;
             return @"landscape";
             break;
         default:
-            return @"landscape";
+            return @"portrait";
             break;
     }
 }
 
-- (NSString *)getCurrentOrientationToString {
-
+- (UIInterfaceOrientation)getCurrentOrientation {
     __block UIInterfaceOrientation deviceOrientation = nil;
     
     dispatch_sync(dispatch_get_main_queue(), ^{
         deviceOrientation = [self getInterfaceOrientation];
     });
+
+    return deviceOrientation;
+}
+
+- (NSString *)getCurrentOrientationToString {
+    UIInterfaceOrientation deviceOrientation = [self getCurrentOrientation];
 
     return [self orientationToString:deviceOrientation];
 }
