@@ -42,6 +42,7 @@ var CanvasCamera = function() {
   this.canvas = {};
   this.options = {};
   this.onCapture = null;
+  this.currentFlashMode = false;
   this.nativeClass = 'CanvasCamera';
 };
 
@@ -227,6 +228,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
   CanvasCamera.Renderer.prototype.onOrientationChange = function() {
     if (this.canvasCamera.getUIOrientation() !== this.orientation) {
       this.invert();
+      this.canvasCamera.flashMode(this.canvasCamera.currentFlashMode); //Set the flash mode again after turning, because it turns off on configuration change
     }
     this.buffer = [];
   };
@@ -487,6 +489,9 @@ CanvasCamera.prototype.initialize = function(fcanvas, tcanvas) {
 CanvasCamera.prototype.start = function(userOptions, onError, onSuccess) {
   this.options = userOptions;
   this.setRenderingPresets();
+  if (userOptions != null) {
+    this.currentFlashMode = userOptions.flashMode || false;
+  }
 
   if (onSuccess && typeof onSuccess === 'function') {
     this.onCapture = onSuccess;
@@ -553,6 +558,7 @@ CanvasCamera.prototype.stopVideoRecording = function(onError, onSuccess) {
 };
 
 CanvasCamera.prototype.flashMode = function(flashMode, onError, onSuccess) {
+  this.currentFlashMode = flashMode;
   exec(function(data) {
     if (onSuccess && typeof onSuccess === 'function') {
       onSuccess(data);
