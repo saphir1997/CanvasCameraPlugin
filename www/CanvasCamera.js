@@ -175,6 +175,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
 
     this.available = true;
     this.fullscreen = false;
+    this.drawOffscreen = false;
 
     this.element = element || null;
     this.canvasCamera = canvasCamera || null;
@@ -225,8 +226,17 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
     return this;
   };
 
+  CanvasCamera.Renderer.prototype.getCanvasOrientation = function() {
+    if (this.element) {
+      if (this.element.width > this.element.height) {
+        return 'landscape';
+      }
+    }
+    return 'portrait';
+  };
+
   CanvasCamera.Renderer.prototype.onOrientationChange = function() {
-    if (this.canvasCamera.getUIOrientation() !== this.orientation) {
+    if (this.canvasCamera.getUIOrientation() !== this.getCanvasOrientation()) {
       this.invert();
       this.canvasCamera.flashMode(this.canvasCamera.currentFlashMode); //Set the flash mode again after turning, because it turns off on configuration change
     }
@@ -371,7 +381,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
         if (this.fullscreen) {
           iSize.width = parseFloat(window.innerHeight);
         } else {
-          if (parseFloat(this.size.height) <= parseFloat(window.innerHeight)) {
+          if (this.canvasCamera.options.drawOffscreen || parseFloat(this.size.height) <= parseFloat(window.innerHeight)) {
             iSize.width = parseFloat(this.size.height);
           } else {
             iSize.width = parseFloat(window.innerHeight);
@@ -382,7 +392,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
         if (this.fullscreen) {
           iSize.height = parseFloat(window.innerWidth);
         } else {
-          if (parseFloat(this.size.width) <= parseFloat(window.innerWidth)) {
+          if (this.canvasCamera.options.drawOffscreen || parseFloat(this.size.width) <= parseFloat(window.innerWidth)) {
             iSize.height = parseFloat(this.size.width);
           } else {
             iSize.height = parseFloat(window.innerWidth);
@@ -397,10 +407,10 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
 
   CanvasCamera.Renderer.prototype.resize = function() {
     if (this.size) {
-      var pixelRatio = window.devicePixelRatio || 1;
+      var pixelRatio = this.canvasCamera.options.drawOffscreen ? 1 : (window.devicePixelRatio || 1);
       if (this.size.width && !isNaN(this.size.width)) {
-        if (!this.fullscreen &&
-            parseFloat(this.size.width) <= parseFloat(window.innerWidth)) {
+        if (this.canvasCamera.options.drawOffscreen || (!this.fullscreen &&
+            parseFloat(this.size.width) <= parseFloat(window.innerWidth))) {
           this.element.width = parseFloat(this.size.width * pixelRatio);
           this.element.style.width = parseFloat(this.size.width) + 'px';
         } else {
@@ -412,8 +422,8 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
         this.element.style.width = parseFloat(window.innerWidth) + 'px';
       }
       if (this.size.height && !isNaN(this.size.height)) {
-        if (!this.fullscreen &&
-            parseFloat(this.size.height) <= parseFloat(window.innerHeight)) {
+        if (this.canvasCamera.options.drawOffscreen || (!this.fullscreen &&
+            parseFloat(this.size.height) <= parseFloat(window.innerHeight))) {
           this.element.height = parseFloat(this.size.height * pixelRatio);
           this.element.style.height = parseFloat(this.size.height) + 'px';
         } else {
@@ -434,7 +444,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
     if (size && size.width && size.height) {
       if (!isNaN(parseFloat(size.width)) && !isNaN(parseFloat(size.height))) {
         this.size = size;
-        if (!this.fullscreen) {
+        if (!this.canvasCamera.options.drawOffscreen && !this.fullscreen) {
           // If size is higher than windows size, set size to fullscreen.
           if (parseFloat(size.width) >= parseFloat(window.innerWidth) &&
               parseFloat(size.height) >= parseFloat(window.innerHeight)) {
@@ -555,6 +565,19 @@ CanvasCamera.prototype.stopVideoRecording = function(onError, onSuccess) {
       onError(error);
     }
   }, this.nativeClass, 'stopVideoRecording', []);
+};
+
+
+CanvasCamera.prototype.requestSingleFullsize = function(onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'requestSingleFullsize', []);
 };
 
 CanvasCamera.prototype.flashMode = function(flashMode, onError, onSuccess) {

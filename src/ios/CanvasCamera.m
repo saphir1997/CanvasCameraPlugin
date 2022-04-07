@@ -29,6 +29,8 @@ static BOOL const LOGGING                    = NO;
 @property (readwrite, strong) NSArray *fileNames;
 
 @property (readwrite, strong) dispatch_queue_t sessionQueue;
+// Semaphore to have no inconsistencies with the recorder when changing state flag isRecording
+@property (readwrite, strong) dispatch_semaphore_t recordingSemaphore;
 
 @property (readwrite, nonatomic, strong) AVCaptureDevice *captureDevice;
 @property (readwrite, nonatomic, strong) AVCaptureSession *captureSession;
@@ -61,6 +63,8 @@ static BOOL const LOGGING                    = NO;
     if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][pluginInitialize] Capture session initialized...");
     self.sessionQueue = dispatch_queue_create("canvas_camera_capture_session_queue", DISPATCH_QUEUE_SERIAL);
     if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][pluginInitialize] Capture session queue created...");
+    self.recordingSemaphore = dispatch_semaphore_create(1);
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][pluginInitialize] Recording semaphore created...");
 }
 
 - (void)onAppTerminate {
@@ -394,6 +398,7 @@ static BOOL const LOGGING                    = NO;
     self.captureHeight = 288;
     self.hasThumbnail = false;
     self.disableFullsize = false;
+    self.captureFullsizeOnce = false;
     self.thumbnailRatio = 1 / 6;
     self.flashMode = AVCaptureFlashModeOff;
     self.devicePosition = AVCaptureDevicePositionBack;
@@ -731,6 +736,8 @@ static BOOL const LOGGING                    = NO;
     if (self.isPreviewing && self.callbackId) {
         UIInterfaceOrientation currentOrientation;
 
+        dispatch_semaphore_wait(self.recordingSemaphore, DISPATCH_TIME_FOREVER);
+
         // Only flip video if it is not recording!
         if (!self.isRecording) {
             [self setVideoOrientation:connection];
@@ -745,7 +752,7 @@ static BOOL const LOGGING                    = NO;
 
         // Has the image been rotated ?
         NSInteger currentRotation = [self getDisplayRotationFromOrientation:currentOrientation];
-        BOOL rotated = (currentRotation == 90 || currentRotation == -90);
+        BOOL rotated = (currentRotation == 0 || currentRotation == 180);
         // Get image Buffer from sample buffer
         self.pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
         // Get core image from image buffer
@@ -764,6 +771,8 @@ static BOOL const LOGGING                    = NO;
                             withPresentationTime:CMTimeSubtract(frameTime, self.firstFrameTime)]; // Relative frameTime from the beginning of the recording
         }
 
+        dispatch_semaphore_signal(self.recordingSemaphore);
+
         // Create weak reference to use in background thread
         __weak CanvasCamera* weakSelf = self;
         
@@ -773,19 +782,23 @@ static BOOL const LOGGING                    = NO;
             if (!weakSelf.isProcessingPreview) {
                 weakSelf.isProcessingPreview = YES;
                 
-                @autoreleasepool { //TODO TEST option to disable full size image and just show thumbnail - less demanding on the hardware!
+                @autoreleasepool {
                     // Getting image files paths
                     NSMutableDictionary *files = [weakSelf getImageFilesPaths];
                     
                     // Resize the ui image to match target canvas size
-                    if (!weakSelf.disableFullsize || weakSelf.hasThumbnail) {
+                    if (!weakSelf.disableFullsize || weakSelf.hasThumbnail || weakSelf.captureFullsizeOnce) {
                         uiImage = [weakSelf resizedUIImage:uiImage toSize:CGSizeMake(weakSelf.canvasWidth, weakSelf.canvasHeight) rotated:rotated];
                     }
 
                     // Convert the ui image to JPEG NSData
                     NSData *fullsizeData = nil;
-                    if (!weakSelf.disableFullsize) {
+                    if (!weakSelf.disableFullsize || weakSelf.captureFullsizeOnce) {
                         fullsizeData = UIImageJPEGRepresentation(uiImage, 1.0);
+                    }
+
+                    if (weakSelf.captureFullsizeOnce) {
+                        weakSelf.captureFullsizeOnce = false;
                     }
 
                     // Same operation for the image thumbnail version
@@ -968,43 +981,41 @@ static BOOL const LOGGING                    = NO;
     //Release outputURL
     outputURL = nil;
 
-    if (!error) {
-        self.isRecording = YES;
-    } else {
-        self.isRecording = NO;
-    }
     self.hasPendingOperation = YES;
 
     __weak CanvasCamera* weakSelf = self;
 
     [self.commandDelegate runInBackground:^{
+        dispatch_semaphore_wait(self.recordingSemaphore, DISPATCH_TIME_FOREVER);
         if (error) {
+            self.isRecording = NO;
             if (LOGGING) NSLog(@"[ERROR][CanvasCamera][startVideoRecording] Unable to start video recording", error.localizedDescription);
             CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:[weakSelf getPluginResultMessage:[NSString stringWithFormat:@"Unable to start video recording: %@", error.localizedDescription]]];
             [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:weakSelf.callbackId];
             weakSelf.hasPendingOperation = NO;
         } else {
+            self.isRecording = YES;
             if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][startVideoRecording] Started video recording.");
             CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK" pluginOutput:output]];
             [pluginResult setKeepCallbackAsBool:YES];
             [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
             weakSelf.hasPendingOperation = NO;
         }
-
-        
+        dispatch_semaphore_signal(self.recordingSemaphore);
     }];
 }
 
 - (void)stopVideoRecording:(CDVInvokedUrlCommand *)command {
     if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopVideoRecording] Starting async stopVideoRecording thread...");
 
-    self.isRecording = NO;
     self.hasPendingOperation = YES;
 
     __weak CanvasCamera* weakSelf = self;
 
     [self.commandDelegate runInBackground:^{
         CDVPluginResult *pluginResult = nil;
+        dispatch_semaphore_wait(self.recordingSemaphore, DISPATCH_TIME_FOREVER);
+        self.isRecording = NO;
         @try {
             [self.assetWriter finishWriting];
             if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopVideoRecording] Video recording stopped.");
@@ -1018,6 +1029,22 @@ static BOOL const LOGGING                    = NO;
             weakSelf.hasPendingOperation = NO;
         }
         weakSelf.firstFrameTime = kCMTimeZero;
+        dispatch_semaphore_signal(self.recordingSemaphore);
+    }];
+}
+
+- (void)requestSingleFullsize:(CDVInvokedUrlCommand *)command {
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][requestSingleFullsize] Requesting a full size frame on the next capture.");
+
+    self.captureFullsizeOnce = YES;
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        CDVPluginResult *pluginResult = pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"Full size frame requested."]];
+        [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        weakSelf.hasPendingOperation = NO;
     }];
 }
 
