@@ -804,7 +804,7 @@ static BOOL const LOGGING                    = NO;
                     // Same operation for the image thumbnail version
                     NSData *thumbnailData = nil;
                     if (weakSelf.hasThumbnail) {
-                        thumbnailData = UIImageJPEGRepresentation([weakSelf resizedUIImage:uiImage ratio:weakSelf.thumbnailRatio], 1.0);
+                        thumbnailData = UIImageJPEGRepresentation([weakSelf resizedUIImage:uiImage ratio:weakSelf.thumbnailRatio], 0.7);
                     }
 
                     // Allocating output NSDictionnary
