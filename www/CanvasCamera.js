@@ -518,6 +518,7 @@ CanvasCamera.prototype.start = function(userOptions, onError, onSuccess) {
 
 CanvasCamera.prototype.stop = function(onError, onSuccess) {
   this.disableRenderers();
+  this.currentFlashMode = false; //Turn off flash after finishing recording
   exec(function(data) {
     if (onSuccess && typeof onSuccess === 'function') {
       onSuccess(data);
