@@ -760,13 +760,14 @@ static BOOL const LOGGING                    = NO;
         // Get ui image from core image
         __block UIImage *uiImage = [self UIImageFromCIImage:ciImage];
 
-        // Get frameTime of the current frame and set it as first if necessary
-        CMTime frameTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        if (CMTimeCompare(self.firstFrameTime, kCMTimeZero) <= 0) {
-            self.firstFrameTime = frameTime;
-        }
         // Add frame to recording, if recording is active
         if(self.isRecording && self.assetWriterInput.readyForMoreMediaData) {
+            // Get frameTime of the current frame and set it as first if necessary
+            CMTime frameTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+            if (CMTimeCompare(self.firstFrameTime, kCMTimeZero) <= 0) {
+                self.firstFrameTime = frameTime;
+            }
+
             [self.pixelBufferAdaptor appendPixelBuffer:self.pixelBuffer
                             withPresentationTime:CMTimeSubtract(frameTime, self.firstFrameTime)]; // Relative frameTime from the beginning of the recording
         }
@@ -967,6 +968,7 @@ static BOOL const LOGGING                    = NO;
                                     initWithURL:outputURL
                                     fileType:AVFileTypeMPEG4
                                     error:&error];
+    self.assetWriter.shouldOptimizeForNetworkUse = YES;
     [self.assetWriter addInput:self.assetWriterInput];
 
     [self.assetWriter startWriting];
@@ -1013,23 +1015,35 @@ static BOOL const LOGGING                    = NO;
     __weak CanvasCamera* weakSelf = self;
 
     [self.commandDelegate runInBackground:^{
-        CDVPluginResult *pluginResult = nil;
-        dispatch_semaphore_wait(self.recordingSemaphore, DISPATCH_TIME_FOREVER);
-        self.isRecording = NO;
-        @try {
-            [self.assetWriter finishWriting];
-            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopVideoRecording] Video recording stopped.");
-            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"Video recording stopped."]];
-            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
-            weakSelf.hasPendingOperation = NO;
-        } @catch (NSException *exception) {
-            if (LOGGING) NSLog(@"[ERROR][CanvasCamera][stopVideoRecording] Could not stop video recording : %@", exception.reason);
-            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:[weakSelf getPluginResultMessage:exception.reason]];
-            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        dispatch_semaphore_wait(weakSelf.recordingSemaphore, DISPATCH_TIME_FOREVER);
+        if (weakSelf.isRecording) {
+            [weakSelf.assetWriterInput markAsFinished];
+            weakSelf.isRecording = NO;
+            @try {
+                [weakSelf.assetWriter finishWritingWithCompletionHandler:^{
+                    CDVPluginResult *pluginResult = nil;
+                    if (weakSelf.assetWriter.status == AVAssetWriterStatusCompleted) {
+                        if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopVideoRecording] Video recording stopped.");
+                        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"Video recording stopped."]];
+                    } else {
+                        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][stopVideoRecording] Could not stop video recording : %@", [weakSelf.assetWriter.error localizedDescription]);
+                        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:[weakSelf getPluginResultMessage:[weakSelf.assetWriter.error localizedDescription]]];
+                    }
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                    weakSelf.firstFrameTime = kCMTimeZero;
+                }];
+            } @catch (NSException *exception) {
+                CDVPluginResult *pluginResult = nil;
+                if (LOGGING) NSLog(@"[ERROR][CanvasCamera][stopVideoRecording] Could not stop video recording : %@", exception.reason);
+                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:[weakSelf getPluginResultMessage:exception.reason]];
+                [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                weakSelf.hasPendingOperation = NO;
+            }
+        } else {
             weakSelf.hasPendingOperation = NO;
         }
-        weakSelf.firstFrameTime = kCMTimeZero;
-        dispatch_semaphore_signal(self.recordingSemaphore);
+        dispatch_semaphore_signal(weakSelf.recordingSemaphore);
     }];
 }
 
