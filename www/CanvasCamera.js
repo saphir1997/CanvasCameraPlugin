@@ -164,24 +164,31 @@ CanvasCamera.prototype.createFrame = (function(image, element, renderer) {
 
 CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
   CanvasCamera.Renderer = function(element, canvasCamera) {
-    this.data = null;
-    this.size = null;
-    this.image = null;
-    this.context = null;
-    this.orientation = null;
-    this.rotation = null;
-
-    this.buffer = [];
-
-    this.available = true;
-    this.fullscreen = false;
-    this.drawOffscreen = false;
-
-    this.element = element || null;
-    this.canvasCamera = canvasCamera || null;
-
-    this.onAfterDraw = null;
-    this.onBeforeDraw = null;
+    this.initProperties = function(element, canvasCamera) {
+      this.data = null;
+      this.size = null;
+      this.image = null;
+      this.context = null;
+      this.orientation = null;
+      this.rotation = null;
+  
+      this.buffer = [];
+  
+      this.available = true;
+      this.fullscreen = false;
+      this.drawOffscreen = false;
+  
+      this.element = element || null;
+      this.canvasCamera = canvasCamera || null;
+  
+      this.onAfterDraw = null;
+      this.onBeforeDraw = null;
+  
+      this.drawFunction = null;
+      this.handleError = null;
+      this.handleOrientationChange = null;
+    }.bind(this);
+    this.initProperties(element, canvasCamera);
   };
 
   CanvasCamera.Renderer.prototype.initialize = function() {
@@ -191,7 +198,7 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
       this.image = new Image();
       this.image.crossOrigin = 'Anonymous';
 
-      const drawFunction = function(event) {
+      this.drawFunction = function(event) {
         var frame = this.canvasCamera.createFrame(
             this.image,
             this.element,
@@ -212,16 +219,18 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
 
         this.enable();
       }.bind(this);
-      this.image.addEventListener('load', drawFunction);
+      this.image.addEventListener('load', this.drawFunction);
 
-      this.image.addEventListener('error', function(event) {
+      this.handleError = function(event) {
         this.clear().enable();
-      }.bind(this));
+      }.bind(this);
+      this.image.addEventListener('error', this.handleError);
 
-      window.addEventListener('orientationchange', function(event) {
+      this.handleOrientationChange = function(event) {
         this.onOrientationChange();
-        drawFunction();
-      }.bind(this));
+        this.drawFunction();
+      }.bind(this);
+      window.addEventListener('orientationchange', this.handleOrientationChange);
     }
     return this;
   };
@@ -362,6 +371,19 @@ CanvasCamera.prototype.createRenderer = (function(element, canvasCamera) {
 
   CanvasCamera.Renderer.prototype.disable = function() {
     this.available = false;
+
+    return this;
+  };
+
+  CanvasCamera.Renderer.prototype.invalidate = function() {
+    if (this.image != null) {
+      this.image.removeEventListener('load', this.drawFunction);
+      this.image.removeEventListener('error', this.handleError);
+    }
+
+    window.removeEventListener('orientationchange', this.handleOrientationChange);
+
+    this.initProperties(null, null); //Reset all properties to free resources
 
     return this;
   };
@@ -518,6 +540,7 @@ CanvasCamera.prototype.start = function(userOptions, onError, onSuccess) {
 
 CanvasCamera.prototype.stop = function(onError, onSuccess) {
   this.disableRenderers();
+  this.invalidateRenderers();
   this.currentFlashMode = false; //Turn off flash after finishing recording
   exec(function(data) {
     if (onSuccess && typeof onSuccess === 'function') {
@@ -652,6 +675,16 @@ CanvasCamera.prototype.disableRenderers = function() {
         if (this.canvas[renderer].enabled()) {
           this.canvas[renderer].disable();
         }
+      }
+    }
+  }
+};
+
+CanvasCamera.prototype.invalidateRenderers = function() {
+  if (this.canvas && typeof this.canvas === 'object') {
+    for (var renderer in this.canvas) {
+      if (this.canvas.hasOwnProperty(renderer)) {
+        this.canvas[renderer].invalidate();
       }
     }
   }
