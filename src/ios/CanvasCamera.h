@@ -30,6 +30,9 @@ static NSString *const CCDisableFullsizeKey  = @"disableFullsize";
 static NSString *const CCThumbnailRatioKey   = @"thumbnailRatio";
 static NSString *const CCLensOrientationKey  = @"cameraFacing";
 
+static NSString *const CCFocusModeKey        = @"focusMode";
+static NSString *const CCFocusDistanceKey    = @"focusDistance";
+
 #pragma mark - CanvasCamera Public Interface
 
 @interface CanvasCamera : CDVPlugin <AVCaptureVideoDataOutputSampleBufferDelegate>
@@ -66,6 +69,10 @@ static NSString *const CCLensOrientationKey  = @"cameraFacing";
 - (void)requestSingleFullsize:(CDVInvokedUrlCommand *)command;
 - (void)flashMode:(CDVInvokedUrlCommand *)command;
 - (void)cameraPosition:(CDVInvokedUrlCommand *)command;
+- (void)setZoom:(CDVInvokedUrlCommand *)command;
+- (void)setFocus:(CDVInvokedUrlCommand *)command;
+- (void)setExposureCompensation:(CDVInvokedUrlCommand *)command;
+- (void)setPointOfInterest:(CDVInvokedUrlCommand *)command;
 
 - (NSString *)filenameSuffix;
 - (CGSize)calculateAspectRatio:(CGSize)origSize targetSize:(CGSize)targetSize;

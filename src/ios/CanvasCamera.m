@@ -23,6 +23,12 @@ static BOOL const LOGGING                    = NO;
 // Private Access
 
 @property (readwrite, assign) AVCaptureFlashMode flashMode;
+@property (readwrite, strong) NSDictionary *capabilities;
+@property (readwrite, strong) NSString *focusMode;
+@property (readwrite, assign) CGFloat zoomFactor;
+@property (readwrite, strong) NSNumber *focusDistance;
+@property (readwrite, assign) CGFloat exposureCompensationValue;
+@property (readwrite, strong) NSDictionary *pointOfInterestCoordinates;
 
 @property (readwrite, assign) NSInteger fileId;
 @property (readwrite, strong) NSString *appPath;
@@ -188,7 +194,7 @@ static BOOL const LOGGING                    = NO;
         return;
     }
 
-    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][stopCapture] Starting async flashMode thread...");
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][flashMode] Starting async flashMode thread...");
 
     self.hasPendingOperation = YES;
 
@@ -217,7 +223,225 @@ static BOOL const LOGGING                    = NO;
             }
         } else {
             if (LOGGING) NSLog(@"[WARNING][CanvasCamera][flashMode] Could not set flash mode. No capture device available !");
-            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Couldn not set flash mode. No capture device available !"]];
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set flash mode. No capture device available !"]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        }
+    }];
+}
+
+- (void)setFocus:(CDVInvokedUrlCommand *)command {
+    // parse options
+    @try {
+        if ((command.arguments).count > 0) {
+            NSDictionary *focusOptions = (command.arguments)[0];
+            if (![focusOptions isKindOfClass:[NSDictionary class]]) {
+                @throw [NSException exceptionWithName:@"ParsingError" reason:@"No dictionary provided" userInfo:nil];
+                return;
+            }
+            self.focusMode = focusOptions[CCFocusModeKey];
+            NSString *focusDistanceString = [focusOptions objectForKey:CCFocusDistanceKey];
+            //Set nil, if it is not set
+            self.focusDistance = (focusDistanceString == nil || focusDistanceString == [NSNull null]) ? nil : @([focusDistanceString floatValue]);
+        }
+    } @catch (NSException *exception) {
+        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][focus] Options parsing error : %@", exception.reason);
+        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_JSON_EXCEPTION messageAsDictionary:[self getPluginResultMessage:exception.reason]];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        return;
+    }
+
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][focus] Starting async focus thread...");
+
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        CDVPluginResult *pluginResult = nil;
+        if (weakSelf.isPreviewing && weakSelf.captureDevice) {
+            BOOL result = false; 
+            if (weakSelf.focusDistance != nil) { 
+                result = [self setOptimalFocusDistance:weakSelf.captureDevice focusDistance:weakSelf.focusDistance];
+            } else if (weakSelf.focusMode) {
+                result = [self setOptimalFocusMode:weakSelf.captureDevice focusMode:weakSelf.focusMode];
+            }
+            if(result) {
+                if (self.callbackId) {
+                    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][focus] Focus applied !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                } else {
+                    if (LOGGING) NSLog(@"[WARNING][CanvasCamera][focus] Could not set focus. No capture callback available !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set focus. No capture callback available !"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                }
+            } else {
+                if (LOGGING) NSLog(@"[WARNING][CanvasCamera][focus] Could not set focus !");
+                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set focus !"]];
+                [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                weakSelf.hasPendingOperation = NO;
+            }
+        } else {
+            if (LOGGING) NSLog(@"[WARNING][CanvasCamera][focus] Could not set focus. No capture device available !");
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set focus. No capture device available !"]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        }
+    }];
+}
+
+- (void)setZoom:(CDVInvokedUrlCommand *)command {
+    // parse options
+    @try {
+        if ((command.arguments).count > 0) {
+            self.zoomFactor = [(command.arguments)[0] floatValue];
+        }
+    } @catch (NSException *exception) {
+        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][zoomFactor] Options parsing error : %@", exception.reason);
+        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_JSON_EXCEPTION messageAsDictionary:[self getPluginResultMessage:exception.reason]];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        return;
+    }
+
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][zoomFactor] Starting async zoomFactor thread...");
+
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        CDVPluginResult *pluginResult = nil;
+        if (weakSelf.isPreviewing && weakSelf.captureDevice) {
+            if([self setOptimalZoomFactor:weakSelf.captureDevice zoomFactor:weakSelf.zoomFactor]) {
+                if (self.callbackId) {
+                    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][zoomFactor] Zoom factor applied !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                } else {
+                    if (LOGGING) NSLog(@"[WARNING][CanvasCamera][zoomFactor] Could not set zoom factor. No capture callback available !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set zoom factor. No capture callback available !"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                }
+            } else {
+                if (LOGGING) NSLog(@"[WARNING][CanvasCamera][zoomFactor] Could not set zoom factor !");
+                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set zoom factor !"]];
+                [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                weakSelf.hasPendingOperation = NO;
+            }
+        } else {
+            if (LOGGING) NSLog(@"[WARNING][CanvasCamera][zoomFactor] Could not set zoom factor. No capture device available !");
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set zoom factor. No capture device available !"]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        }
+    }];
+}
+
+- (void)setExposureCompensation:(CDVInvokedUrlCommand *)command {
+    // parse options
+    @try {
+        if ((command.arguments).count > 0) {
+            self.exposureCompensationValue = [(command.arguments)[0] floatValue];
+        }
+    } @catch (NSException *exception) {
+        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][exposure] Options parsing error : %@", exception.reason);
+        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_JSON_EXCEPTION messageAsDictionary:[self getPluginResultMessage:exception.reason]];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        return;
+    }
+
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][exposure] Starting async exposure thread...");
+
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        CDVPluginResult *pluginResult = nil;
+        if (weakSelf.isPreviewing && weakSelf.captureDevice) {
+            if([self setOptimalExposureCompensation:weakSelf.captureDevice exposureCompensation:weakSelf.exposureCompensationValue]) {
+                if (self.callbackId) {
+                    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][exposure] Exposure factor applied !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                } else {
+                    if (LOGGING) NSLog(@"[WARNING][CanvasCamera][exposure] Could not set exposure. No capture callback available !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set exposure. No capture callback available !"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                }
+            } else {
+                if (LOGGING) NSLog(@"[WARNING][CanvasCamera][exposure] Could not set exposure !");
+                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set exposure !"]];
+                [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                weakSelf.hasPendingOperation = NO;
+            }
+        } else {
+            if (LOGGING) NSLog(@"[WARNING][CanvasCamera][exposure] Could not set exposure. No capture device available !");
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set exposure. No capture device available !"]];
+            [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+            weakSelf.hasPendingOperation = NO;
+        }
+    }];
+}
+
+- (void)setPointOfInterest:(CDVInvokedUrlCommand *)command {
+    // parse options
+    @try {
+        if ((command.arguments).count > 0) {
+            NSDictionary *coordinates = (command.arguments)[0];
+            if (![coordinates isKindOfClass:[NSDictionary class]]) {
+                @throw [NSException exceptionWithName:@"ParsingError" reason:@"No dictionary provided" userInfo:nil];
+                return;
+            }
+            self.pointOfInterestCoordinates = @{
+                @"x": coordinates[@"x"],
+                @"y": coordinates[@"y"]
+            };
+        }
+    } @catch (NSException *exception) {
+        if (LOGGING) NSLog(@"[ERROR][CanvasCamera][POI] Options parsing error : %@", exception.reason);
+        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_JSON_EXCEPTION messageAsDictionary:[self getPluginResultMessage:exception.reason]];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        return;
+    }
+
+    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][POI] Starting async POI thread...");
+
+    self.hasPendingOperation = YES;
+
+    __weak CanvasCamera* weakSelf = self;
+
+    [self.commandDelegate runInBackground:^{
+        CDVPluginResult *pluginResult = nil;
+        if (weakSelf.isPreviewing && weakSelf.captureDevice) {
+            if([self setOptimalPointOfInterest:weakSelf.captureDevice coordinates:weakSelf.pointOfInterestCoordinates]) {
+                if (self.callbackId) {
+                    if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][POI] POI applied !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:[weakSelf getPluginResultMessage:@"OK"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                } else {
+                    if (LOGGING) NSLog(@"[WARNING][CanvasCamera][POI] Could not set POI. No capture callback available !");
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set POI. No capture callback available !"]];
+                    [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    weakSelf.hasPendingOperation = NO;
+                }
+            } else {
+                if (LOGGING) NSLog(@"[WARNING][CanvasCamera][POI] Could not set POI !");
+                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_INVALID_ACTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set POI !"]];
+                [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                weakSelf.hasPendingOperation = NO;
+            }
+        } else {
+            if (LOGGING) NSLog(@"[WARNING][CanvasCamera][POI] Could not set POI. No capture device available !");
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsDictionary:[weakSelf getPluginResultMessage:@"Could not set POI. No capture device available !"]];
             [weakSelf.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
             weakSelf.hasPendingOperation = NO;
         }
@@ -402,6 +626,9 @@ static BOOL const LOGGING                    = NO;
     self.thumbnailRatio = 1 / 6;
     self.flashMode = AVCaptureFlashModeOff;
     self.devicePosition = AVCaptureDevicePositionBack;
+    self.zoomFactor = 1.0;
+    self.focusMode = @"continuous";
+    self.capabilities = @{};
     [self initDefaultOptions];
 }
 
@@ -418,6 +645,18 @@ static BOOL const LOGGING                    = NO;
         if ([self initOptimalFlashMode:self.captureDevice flashMode:self.flashMode]) {
             if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][initSessionParameters] Capture flash mode is set to : %@", self.flashMode ? @"On" : @"Off");
         }
+
+        if ([self setOptimalZoomFactor:self.captureDevice zoomFactor:self.zoomFactor]) {
+            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][initSessionParameters] Zoom Factor set to : %f", self.zoomFactor);
+        }
+
+        if ([self setOptimalFocusMode:self.captureDevice focusMode:self.focusMode]) {
+            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][initSessionParameters] Focus Mode set to : %@", self.focusMode);
+        }
+
+        if ([self retrieveCapabilities:self.captureDevice]) {
+            if (LOGGING) NSLog(@"[DEBUG][CanvasCamera][initSessionParameters] Retrieved capabilities : %@", self.capabilities);
+        }
     }
 }
 
@@ -431,6 +670,38 @@ static BOOL const LOGGING                    = NO;
         }
     }
     return nil;
+}
+
+- (BOOL) retrieveCapabilities:(AVCaptureDevice *)captureDevice {
+    NSDictionary *focus = nil;
+    if (captureDevice.lockingFocusWithCustomLensPositionSupported) {
+        focus = @{
+            @"min": @0.0,
+            @"max": @1.0,
+            @"step": @0.01
+        };
+    }
+    NSDictionary *capabilities = @{
+                                    @"torch": @((captureDevice.hasFlash && captureDevice.hasTorch)),
+                                    @"focusMode": @{
+                                        @"locked" : @([captureDevice isFocusModeSupported:AVCaptureFocusModeLocked]),
+                                        @"once" : @([captureDevice isFocusModeSupported:AVCaptureFocusModeAutoFocus]),
+                                        @"continuous" : @([captureDevice isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus])
+                                    },
+                                    @"focusDistance": focus ?: [NSNull null], //Take either focus or a null value
+                                    @"zoom": @{
+                                        @"min": @(captureDevice.minAvailableVideoZoomFactor),
+                                        @"max": @(captureDevice.maxAvailableVideoZoomFactor),
+                                        @"step": @0.1
+                                    },
+                                    @"exposureCompensation": @{
+                                        @"min": @(captureDevice.minExposureTargetBias),
+                                        @"max": @(captureDevice.maxExposureTargetBias)
+                                    }
+                                };
+    self.capabilities = capabilities;
+    
+    return YES;
 }
 
 - (BOOL) initOptimalFlashMode:(AVCaptureDevice *)captureDevice flashMode:(BOOL)flashMode {
@@ -456,6 +727,97 @@ static BOOL const LOGGING                    = NO;
             return YES;
         }
         return NO;
+    }
+    return NO;
+}
+
+- (BOOL) setOptimalZoomFactor:(AVCaptureDevice *)captureDevice zoomFactor:(float)zoomFactor {
+    NSError *error = nil;
+    if([captureDevice lockForConfiguration:&error]) {
+        self.zoomFactor = MAX(1.0, MIN(zoomFactor, captureDevice.activeFormat.videoMaxZoomFactor));
+
+        captureDevice.videoZoomFactor = self.zoomFactor;
+        [captureDevice unlockForConfiguration];
+        return YES;
+    }
+    return NO;
+}
+
+- (BOOL) setOptimalFocusMode:(AVCaptureDevice *)captureDevice focusMode:(NSString *)focusMode {
+    NSError *error = nil;
+    if([captureDevice lockForConfiguration:&error]) {
+        NSInteger focusModeConstant = -1;
+        if ([focusMode isEqual:@"locked"]) {
+            focusModeConstant = AVCaptureFocusModeLocked;
+        } else if ([focusMode isEqual:@"once"]) {
+            focusModeConstant = AVCaptureFocusModeAutoFocus;
+        } else if ([focusMode isEqual:@"continuous"]) {
+            focusModeConstant = AVCaptureFocusModeContinuousAutoFocus;
+        }
+
+        if (focusModeConstant >= 0 && [captureDevice isFocusModeSupported:focusModeConstant]) {
+            captureDevice.focusMode = focusModeConstant;
+            self.focusDistance = @(captureDevice.lensPosition);
+        } else {
+            focusModeConstant = -1;
+        }
+
+        [captureDevice unlockForConfiguration];
+        if (focusModeConstant >= 0) {
+            return YES;
+        } else {
+            return NO;
+        }
+    }
+    return NO;
+}
+
+- (BOOL)setOptimalFocusDistance:(AVCaptureDevice *)captureDevice focusDistance:(NSNumber *)focusDistance {
+    NSError *error = nil;
+    if(focusDistance != nil && [captureDevice lockForConfiguration:&error]) {
+        if(captureDevice.lockingFocusWithCustomLensPositionSupported) {
+            self.focusDistance = @(MAX(0.0, MIN([focusDistance floatValue], 1.0)));
+            [captureDevice setFocusModeLockedWithLensPosition:[self.focusDistance floatValue] completionHandler:nil];
+            self.focusMode = @"locked";
+        }
+        [captureDevice unlockForConfiguration];
+        return YES;
+    }
+    return NO;
+}
+
+
+- (BOOL)setOptimalExposureCompensation:(AVCaptureDevice *)captureDevice exposureCompensation:(float)exposureCompensation {
+    NSError *error = nil;
+    if([captureDevice lockForConfiguration:&error]) {
+        self.exposureCompensationValue = MAX(captureDevice.minExposureTargetBias, MIN(exposureCompensation, captureDevice.maxExposureTargetBias));
+        [captureDevice setExposureTargetBias:self.exposureCompensationValue completionHandler:nil];
+        [captureDevice unlockForConfiguration];
+        return YES;
+    }
+    return NO;
+}
+
+- (BOOL)setOptimalPointOfInterest:(AVCaptureDevice *)captureDevice coordinates:(NSDictionary *)coordinates {
+    NSError *error = nil;
+    if (coordinates == nil || coordinates == [NSNull null]) return NO;
+    if([captureDevice lockForConfiguration:&error]) {
+        NSDictionary *newPointOfInterestCoordinates = @{
+            @"x" : @(MAX(0.0, MIN([coordinates[@"x"] floatValue], 1.0))),
+            @"y" : @(MAX(0.0, MIN([coordinates[@"y"] floatValue], 1.0)))
+        };
+        self.pointOfInterestCoordinates = newPointOfInterestCoordinates;
+
+        if ([captureDevice isFocusModeSupported:AVCaptureFocusModeAutoFocus]){
+            [captureDevice setFocusPointOfInterest:CGPointMake([newPointOfInterestCoordinates[@"x"] floatValue], [newPointOfInterestCoordinates[@"y"] floatValue])];
+            [captureDevice setFocusMode:AVCaptureFocusModeAutoFocus];
+        }
+        if ([captureDevice isExposureModeSupported:AVCaptureExposureModeAutoExpose]){
+            [captureDevice setExposurePointOfInterest:CGPointMake([newPointOfInterestCoordinates[@"x"] floatValue], [newPointOfInterestCoordinates[@"y"] floatValue])];
+            [captureDevice setExposureMode:AVCaptureExposureModeAutoExpose];
+        }
+        [captureDevice unlockForConfiguration];
+        return YES;
     }
     return NO;
 }
@@ -498,10 +860,10 @@ static BOOL const LOGGING                    = NO;
         }
     }
 
-    if (captureWidth <= 3480 && captureHeight <= 2160) {
+    if (captureWidth <= 3840 && captureHeight <= 2160) {
         if([captureSession canSetSessionPreset:AVCaptureSessionPreset3840x2160]) {
             captureSession.sessionPreset = AVCaptureSessionPreset3840x2160;
-            self.captureWidth = 3480;
+            self.captureWidth = 3840;
             self.captureHeight = 2160;
             return YES;
         }
@@ -565,7 +927,12 @@ static BOOL const LOGGING                    = NO;
                               @"disableFullsize" : @(self.disableFullsize),
                               @"thumbnailRatio" : @(self.thumbnailRatio),
                               @"canvas" : canvas,
-                              @"capture" : capture
+                              @"capture" : capture,
+                              @"zoom" : @(self.zoomFactor),
+                              @"focusMode" : self.focusMode,
+                              @"focusDistance" : self.focusDistance ?: [NSNull null], //Take either a valid value or null object
+                              @"exposureCompensation" : @(self.exposureCompensationValue),
+                              @"pointOfInterest": self.pointOfInterestCoordinates ?: [NSNull null] //Take either a valid dictionary or null object
                               };
 
     NSDictionary *preview = @{
@@ -576,7 +943,8 @@ static BOOL const LOGGING                    = NO;
                              @"message" : message,
                              @"options" : options,
                              @"preview" : preview,
-                             @"output" : output
+                             @"output" : output,
+                             @"capabilities": self.capabilities
                              };
 
     return result;
@@ -1124,9 +1492,16 @@ static BOOL const LOGGING                    = NO;
 - (void) setVideoOrientation:(AVCaptureConnection *)connection {
     __block UIInterfaceOrientation deviceOrientation = nil;
     
-    dispatch_sync(dispatch_get_main_queue(), ^{
+    dispatch_block_t block = ^{
         deviceOrientation = [self getInterfaceOrientation];
-    });
+    };
+    
+    //Ensure to always run in main thread, if not in main thread, dispatch, otherwise run directly to not cause deadlock
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), block);
+    }
 
     if (connection.supportsVideoOrientation) {
         switch(deviceOrientation) {
@@ -1190,10 +1565,17 @@ static BOOL const LOGGING                    = NO;
 
 - (UIInterfaceOrientation)getCurrentOrientation {
     __block UIInterfaceOrientation deviceOrientation = nil;
-    
-    dispatch_sync(dispatch_get_main_queue(), ^{
+
+    dispatch_block_t block = ^{
         deviceOrientation = [self getInterfaceOrientation];
-    });
+    };
+    
+    //Ensure to always run in main thread, if not in main thread, dispatch, otherwise run directly to not cause deadlock
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), block);
+    }
 
     return deviceOrientation;
 }

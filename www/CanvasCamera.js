@@ -617,6 +617,54 @@ CanvasCamera.prototype.flashMode = function(flashMode, onError, onSuccess) {
   }, this.nativeClass, 'flashMode', [flashMode]);
 };
 
+CanvasCamera.prototype.zoom = function(zoomValue, onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'setZoom', [zoomValue]);
+};
+
+CanvasCamera.prototype.focus = function(focusSettings /* {focusDistance = undefined, focusMode = undefined} */, onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'setFocus', [focusSettings]);
+};
+
+CanvasCamera.prototype.pointOfInterest = function(pointOfInterestCoordinates /* {x, y} */, onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'setPointOfInterest', [pointOfInterestCoordinates]);
+};
+
+CanvasCamera.prototype.exposureCompensation = function(exposureOffset, onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'setExposureCompensation', [exposureOffset]);
+};
+
 CanvasCamera.prototype.cameraPosition = function(
     cameraFacing,
     onError,
