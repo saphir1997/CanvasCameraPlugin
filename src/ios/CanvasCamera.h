@@ -16,22 +16,28 @@
 #import <ImageIO/ImageIO.h>
 #import <AssetsLibrary/AssetsLibrary.h>
 
+#import "CameraRenderController.h"
+
 #pragma mark - CanvasCamera Public Constants
 
-static NSString *const CCUseKey              = @"use";
-static NSString *const CCFpsKey              = @"fps";
-static NSString *const CCWidthKey            = @"width";
-static NSString *const CCHeightKey           = @"height";
-static NSString *const CCCanvasKey           = @"canvas";
-static NSString *const CCCaptureKey          = @"capture";
-static NSString *const CCFlashModeKey        = @"flashMode";
-static NSString *const CCHasThumbnailKey     = @"hasThumbnail";
-static NSString *const CCDisableFullsizeKey  = @"disableFullsize";
-static NSString *const CCThumbnailRatioKey   = @"thumbnailRatio";
-static NSString *const CCLensOrientationKey  = @"cameraFacing";
+static NSString *const CCUseKey                         = @"use";
+static NSString *const CCFpsKey                         = @"fps";
+static NSString *const CCXOffsetKey                     = @"x";
+static NSString *const CCYOffsetKey                     = @"y";
+static NSString *const CCWidthKey                       = @"width";
+static NSString *const CCHeightKey                      = @"height";
+static NSString *const CCCanvasKey                      = @"canvas";
+static NSString *const CCCaptureKey                     = @"capture";
+static NSString *const CCPreviewKey                     = @"preview";
+static NSString *const CCFlashModeKey                   = @"flashMode";
+static NSString *const CCHasThumbnailKey                = @"hasThumbnail";
+static NSString *const CCGenerateOutputOnlyOnRequestKey = @"generateOutputOnlyOnRequest";
+static NSString *const CCDisableFullsizeKey             = @"disableFullsize";
+static NSString *const CCThumbnailRatioKey              = @"thumbnailRatio";
+static NSString *const CCLensOrientationKey             = @"cameraFacing";
 
-static NSString *const CCFocusModeKey        = @"focusMode";
-static NSString *const CCFocusDistanceKey    = @"focusDistance";
+static NSString *const CCFocusModeKey                   = @"focusMode";
+static NSString *const CCFocusDistanceKey               = @"focusDistance";
 
 #pragma mark - CanvasCamera Public Interface
 
@@ -47,8 +53,13 @@ static NSString *const CCFocusDistanceKey    = @"focusDistance";
 @property (readwrite, assign) NSInteger canvasWidth;
 @property (readwrite, assign) NSInteger captureHeight;
 @property (readwrite, assign) NSInteger captureWidth;
+@property (readwrite, assign) CGFloat previewXOffset;
+@property (readwrite, assign) CGFloat previewYOffset;
+@property (readwrite, assign) CGFloat previewWidth;
+@property (readwrite, assign) CGFloat previewHeight;
 
 @property (readwrite, assign) BOOL hasThumbnail;
+@property (readwrite, assign) BOOL generateOutputOnlyOnRequest;
 @property (readwrite, assign) BOOL disableFullsize;
 @property (readwrite, assign) CGFloat thumbnailRatio;
 
@@ -58,6 +69,7 @@ static NSString *const CCFocusDistanceKey    = @"focusDistance";
 @property (readwrite, assign) BOOL isProcessingPreview;
 @property (readwrite, assign) BOOL isRecording;
 @property (readwrite, assign) BOOL captureFullsizeOnce;
+@property (readwrite, assign) BOOL captureThumbnailOnce;
 
 @property (readwrite, assign) UIInterfaceOrientation recordingOrientation;
 @property (readwrite, assign) CVPixelBufferRef pixelBuffer;
@@ -67,15 +79,18 @@ static NSString *const CCFocusDistanceKey    = @"focusDistance";
 - (void)startVideoRecording:(CDVInvokedUrlCommand *)command;
 - (void)stopVideoRecording:(CDVInvokedUrlCommand *)command;
 - (void)requestSingleFullsize:(CDVInvokedUrlCommand *)command;
+- (void)requestSingleThumbnail:(CDVInvokedUrlCommand *)command;
 - (void)flashMode:(CDVInvokedUrlCommand *)command;
 - (void)cameraPosition:(CDVInvokedUrlCommand *)command;
 - (void)setZoom:(CDVInvokedUrlCommand *)command;
 - (void)setFocus:(CDVInvokedUrlCommand *)command;
 - (void)setExposureCompensation:(CDVInvokedUrlCommand *)command;
 - (void)setPointOfInterest:(CDVInvokedUrlCommand *)command;
+- (void)setPreviewFrame:(CDVInvokedUrlCommand *)command;
 
 - (NSString *)filenameSuffix;
-- (CGSize)calculateAspectRatio:(CGSize)origSize targetSize:(CGSize)targetSize;
+
+@property (nonatomic) CameraRenderController *cameraRenderController;
 
 @end
 

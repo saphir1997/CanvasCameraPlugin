@@ -1,6 +1,6 @@
 {
   "name": "com.saphir1997.cordova-plugin-canvascamera",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "description": "A Cordova plugin to display video from the device's camera into an HTML canvas element.",
   "repository": "https://github.com/saphir1997/CanvasCameraPlugin.git",
   "cordova": {

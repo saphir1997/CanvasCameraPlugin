@@ -34,6 +34,9 @@
       <header-file src="src/ios/CanvasCamera.h" />
       <source-file src="src/ios/CanvasCamera.m" />
 
+      <header-file src="src/ios/CameraRenderController.h" />
+      <source-file src="src/ios/CameraRenderController.m" />
+
       <framework src="AssetsLibrary.framework" weak="true" />
       <framework src="ImageIO.framework" weak="true" />
       <framework src="CoreImage.framework" weak="true" />
@@ -41,6 +44,9 @@
       <framework src="CoreMedia.framework" weak="true" />
       <framework src="CoreGraphics.framework" weak="true" />
       <framework src="MobileCoreServices.framework" weak="true" />
+      <framework src="OpenGLES.framework" />
+      <framework src="GLKit.framework" />
+      <framework src="QuartzCore.framework"/>
 
     </platform>
 

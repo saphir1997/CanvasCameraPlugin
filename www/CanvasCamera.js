@@ -604,6 +604,18 @@ CanvasCamera.prototype.requestSingleFullsize = function(onError, onSuccess) {
   }, this.nativeClass, 'requestSingleFullsize', []);
 };
 
+CanvasCamera.prototype.requestSingleThumbnail = function(onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'requestSingleThumbnail', []);
+};
+
 CanvasCamera.prototype.flashMode = function(flashMode, onError, onSuccess) {
   this.currentFlashMode = flashMode;
   exec(function(data) {
@@ -663,6 +675,18 @@ CanvasCamera.prototype.exposureCompensation = function(exposureOffset, onError, 
       onError(error);
     }
   }, this.nativeClass, 'setExposureCompensation', [exposureOffset]);
+};
+
+CanvasCamera.prototype.setPreviewFrame = function(previewFrame, onError, onSuccess) {
+  exec(function(data) {
+    if (onSuccess && typeof onSuccess === 'function') {
+      onSuccess(data);
+    }
+  }, function(error) {
+    if (onError && typeof onError === 'function') {
+      onError(error);
+    }
+  }, this.nativeClass, 'setPreviewFrame', [previewFrame]);
 };
 
 CanvasCamera.prototype.cameraPosition = function(
