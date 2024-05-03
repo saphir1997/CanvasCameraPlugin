@@ -66,15 +66,6 @@ static BOOL const LOGGING                    = NO;
 
   dispatch_block_t block = ^{
     if ([self.renderLock tryLock]) {
-      /*CGFloat frameHeight = self.view.frame.size.height;
-      CGFloat frameWidth = self.view.frame.size.width;
-      
-      CGFloat imageHeight = image.extent.size.height;
-      CGFloat imageWidth = image.extent.size.width;
-
-      CGFloat scaleHeight = frameHeight / imageHeight;
-      CGFloat scaleWidth = frameWidth / imageWidth;*/
-
       CGSize imageSize = image.extent.size;
       CGSize frameSize = self.view.frame.size;
       CGSize scaledSizeAspect = [CameraRenderController calculateAspectRatio:imageSize targetSize:frameSize];
@@ -104,45 +95,6 @@ static BOOL const LOGGING                    = NO;
       } else {
         pointScale = [windowScreen scale];
       }
-
-      //No need to scale image using transforms. Handled internally.
-      /*CGFloat scale, x, y;
-      if (scaleHeight < scaleWidth) {
-        scale = scaleWidth;
-        x = 0;
-        y = ((scale * imageHeight) - frameHeight ) / 2;
-      } else {
-        scale = scaleHeight;
-        x = ((scale * imageWidth) - frameWidth )/ 2;
-        y = 0;
-      }
-
-      // scale - translate
-      CGAffineTransform xscale = CGAffineTransformMakeScale(scale, scale);
-      CGAffineTransform xlate = CGAffineTransformMakeTranslation(-x, -y);
-      CGAffineTransform xform =  CGAffineTransformConcat(xscale, xlate);
-
-      CIFilter *centerFilter = [CIFilter filterWithName:@"CIAffineTransform"  keysAndValues:
-        kCIInputImageKey, image,
-        kCIInputTransformKey, [NSValue valueWithBytes:&xform objCType:@encode(CGAffineTransform)],
-        nil];
-
-      CIImage *transformedImage = [centerFilter outputImage];
-
-      // crop
-      CIFilter *cropFilter = [CIFilter filterWithName:@"CICrop"];
-      CIVector *cropRect = [CIVector vectorWithX:0 Y:0 Z:frameWidth W:frameHeight];
-      [cropFilter setValue:transformedImage forKey:kCIInputImageKey];
-      [cropFilter setValue:cropRect forKey:@"inputRectangle"];
-      CIImage *croppedImage = [cropFilter outputImage];
-
-
-
-      self.latestFrame = croppedImage;
-      
-      CGRect dest = CGRectMake(0, 0, frameWidth * pointScale, frameHeight * pointScale);
-
-      [self.ciContext drawImage:croppedImage inRect:dest fromRect:[croppedImage extent]];*/
       
       // Calculate the offset to center the image in the target rect
       CGFloat offsetX = (frameSize.width - scaledSizeAspect.width) / 2;
